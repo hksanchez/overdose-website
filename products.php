@@ -103,23 +103,17 @@ require_once 'includes/header.php';
                   table in your database, or edit db.php seed data.
                 ╚══════════════════════════════════════════════════════╝
               -->
-              <img src="<?= htmlspecialchars(trim($p['image'])) ?>"
+              <img src="<?= htmlspecialchars(trim($p['image'])) ?>?v=<?= @filemtime(trim($p['image'])) ?>"
                    alt="<?= htmlspecialchars($p['name']) ?>"
                    class="product-img-fluid"
                    onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"/>
               <div class="img-fallback">☕</div>
-              <?php if ($p['is_promo']): ?>
-                <span class="promo-tag">PROMO</span>
-              <?php endif; ?>
             </div>
             <div class="product-card-body">
               <h3><?= htmlspecialchars($p['name']) ?></h3>
               <p class="product-desc"><?= htmlspecialchars($p['description']) ?></p>
               <p class="price">
                 ₱<?= number_format($display_price, 2) ?>
-                <?php if ($p['is_promo'] && $p['promo_price']): ?>
-                  <span class="price-old">₱<?= number_format($p['price'], 2) ?></span>
-                <?php endif; ?>
               </p>
               <form method="POST" class="card-add-form">
                 <input type="hidden" name="product_id" value="<?= $p['id'] ?>"/>
@@ -156,23 +150,17 @@ require_once 'includes/header.php';
                   table in your database, or edit db.php seed data.
                 ╚══════════════════════════════════════════════════════╝
               -->
-              <img src="<?= htmlspecialchars(trim($p['image'])) ?>"
+              <img src="<?= htmlspecialchars(trim($p['image'])) ?>?v=<?= @filemtime(trim($p['image'])) ?>"
                    alt="<?= htmlspecialchars($p['name']) ?>"
                    class="product-img-fluid"
                    onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"/>
               <div class="img-fallback">🥐</div>
-              <?php if ($p['is_promo']): ?>
-                <span class="promo-tag">PROMO</span>
-              <?php endif; ?>
             </div>
             <div class="product-card-body">
               <h3><?= htmlspecialchars($p['name']) ?></h3>
               <p class="product-desc"><?= htmlspecialchars($p['description']) ?></p>
               <p class="price">
                 ₱<?= number_format($display_price, 2) ?>
-                <?php if ($p['is_promo'] && $p['promo_price']): ?>
-                  <span class="price-old">₱<?= number_format($p['price'], 2) ?></span>
-                <?php endif; ?>
               </p>
               <form method="POST" class="card-add-form">
                 <input type="hidden" name="product_id" value="<?= $p['id'] ?>"/>
