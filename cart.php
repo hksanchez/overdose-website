@@ -31,6 +31,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_cart'])) {
     exit();
 }
 
+// Fetch user's registered address from DB
+$uq = $conn->prepare("SELECT address FROM users WHERE id = ?");
+$uq->bind_param("i", $_SESSION['user_id']);
+$uq->execute();
+$user_row = $uq->get_result()->fetch_assoc();
+$registered_address = $user_row['address'] ?? '';
+
+// Restore fulfillment from session; default delivery address to registered one
+$fulfillment   = $_SESSION['fulfillment_type'] ?? 'pickup';
+$delivery_addr = $_SESSION['delivery_address'] ?? $registered_address;
+
+// Save fulfillment choice
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_fulfillment'])) {
+    $fulfillment = ($_POST['fulfillment_type'] === 'delivery') ? 'delivery' : 'pickup';
+    // reset_address button resets to registered address
+    if (isset($_POST['reset_address'])) {
+        $delivery_addr = $registered_address;
+    } else {
+        $delivery_addr = trim($_POST['delivery_address'] ?? $registered_address);
+    }
+    $_SESSION['fulfillment_type']  = $fulfillment;
+    $_SESSION['delivery_address']  = $delivery_addr;
+    header("Location: cart.php");
+    exit();
+}
+
 // Apply voucher
 $discount    = 0;
 $voucher_msg = '';
@@ -80,30 +106,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
     if (empty($_SESSION['cart'])) {
         $error = 'Your cart is empty.';
     } else {
-        $sub = 0;
-        foreach ($_SESSION['cart'] as $item) {
-            $sub += $item['price'] * $item['qty'];
+        $ft = $_SESSION['fulfillment_type'] ?? 'pickup';
+        $da = $_SESSION['delivery_address'] ?? '';
+        if ($ft === 'delivery' && empty($da)) {
+            $error = 'Please enter a delivery address before placing your order.';
+        } else {
+            $sub = 0;
+            foreach ($_SESSION['cart'] as $item) {
+                $sub += $item['price'] * $item['qty'];
+            }
+            $disc = $_SESSION['voucher_discount'] ?? 0;
+            $dfee = ($ft === 'delivery') ? 50.00 : 0.00;
+            $total = $sub - $disc + $dfee;
+            $vcode = $_SESSION['voucher_code'] ?? null;
+            $uid = $_SESSION['user_id'];
+
+            // Add fulfillment columns if they don't exist yet
+            $conn->query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS fulfillment_type VARCHAR(10) DEFAULT 'pickup'");
+            $conn->query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_address TEXT DEFAULT NULL");
+
+            $stmt = $conn->prepare("INSERT INTO orders (user_id, total_amount, discount, voucher_code, fulfillment_type, delivery_address, status) VALUES (?, ?, ?, ?, ?, ?, 'Pending')");
+            $stmt->bind_param("iddsss", $uid, $total, $disc, $vcode, $ft, $da);
+            $stmt->execute();
+            $order_id = $conn->insert_id;
+
+            $istmt = $conn->prepare("INSERT INTO order_items (order_id, product_id, quantity, price) VALUES (?, ?, ?, ?)");
+            foreach ($_SESSION['cart'] as $item) {
+                $istmt->bind_param("iiid", $order_id, $item['id'], $item['qty'], $item['price']);
+                $istmt->execute();
+            }
+
+            // Clear cart, voucher, and fulfillment
+            unset($_SESSION['cart'], $_SESSION['voucher_code'], $_SESSION['voucher_discount'],
+                  $_SESSION['fulfillment_type'], $_SESSION['delivery_address']);
+            header("Location: orders.php?placed=" . $order_id);
+            exit();
         }
-        $disc = $_SESSION['voucher_discount'] ?? 0;
-        $total = $sub - $disc;
-        $vcode = $_SESSION['voucher_code'] ?? null;
-        $uid = $_SESSION['user_id'];
-
-        $stmt = $conn->prepare("INSERT INTO orders (user_id, total_amount, discount, voucher_code, status) VALUES (?, ?, ?, ?, 'Pending')");
-        $stmt->bind_param("idds", $uid, $total, $disc, $vcode);
-        $stmt->execute();
-        $order_id = $conn->insert_id;
-
-        $istmt = $conn->prepare("INSERT INTO order_items (order_id, product_id, quantity, price) VALUES (?, ?, ?, ?)");
-        foreach ($_SESSION['cart'] as $item) {
-            $istmt->bind_param("iiid", $order_id, $item['id'], $item['qty'], $item['price']);
-            $istmt->execute();
-        }
-
-        // Clear cart and voucher
-        unset($_SESSION['cart'], $_SESSION['voucher_code'], $_SESSION['voucher_discount']);
-        header("Location: orders.php?placed=" . $order_id);
-        exit();
     }
 }
 
@@ -114,8 +152,11 @@ if (isset($_SESSION['cart'])) {
         $subtotal += $item['price'] * $item['qty'];
     }
 }
-$disc_applied = $_SESSION['voucher_discount'] ?? 0;
-$total = $subtotal - $disc_applied;
+$disc_applied      = $_SESSION['voucher_discount'] ?? 0;
+$fulfillment       = $_SESSION['fulfillment_type'] ?? 'pickup';
+$delivery_addr     = $_SESSION['delivery_address'] ?? $registered_address;
+$delivery_fee      = ($fulfillment === 'delivery') ? 50.00 : 0.00;
+$total             = $subtotal - $disc_applied + $delivery_fee;
 
 require_once 'includes/header.php';
 ?>
@@ -194,6 +235,68 @@ require_once 'includes/header.php';
             <?php endforeach; ?>
           </div>
 
+          <!-- Fulfillment -->
+          <div class="fulfillment-box">
+            <h4>How would you like to receive your order?</h4>
+            <form method="POST" id="fulfillment-form" style="margin-top:16px;">
+              <div class="fulfillment-options">
+                <label class="fulfillment-option <?= $fulfillment === 'pickup' ? 'selected' : '' ?>">
+                  <input type="radio" name="fulfillment_type" value="pickup" <?= $fulfillment === 'pickup' ? 'checked' : '' ?> onchange="this.form.submit()"/>
+                  <div class="fulfillment-icon">🏪</div>
+                  <div>
+                    <div class="fulfillment-label">Pick Up</div>
+                    <div class="fulfillment-desc">Collect at the store</div>
+                  </div>
+                </label>
+                <label class="fulfillment-option <?= $fulfillment === 'delivery' ? 'selected' : '' ?>">
+                  <input type="radio" name="fulfillment_type" value="delivery" <?= $fulfillment === 'delivery' ? 'checked' : '' ?> onchange="this.form.submit()"/>
+                  <div class="fulfillment-icon">🛵</div>
+                  <div>
+                    <div class="fulfillment-label">Delivery</div>
+                    <div class="fulfillment-desc">Delivered to your door</div>
+                  </div>
+                </label>
+              </div>
+              <?php if ($fulfillment === 'delivery'): ?>
+                <?php $is_custom = ($delivery_addr !== $registered_address); ?>
+                <div class="delivery-addr-group" id="delivery-addr-group">
+                  <div class="addr-label-row">
+                    <label class="addr-label">Delivery Address</label>
+                    <?php if ($is_custom && $registered_address): ?>
+                      <button type="submit" name="reset_address" class="addr-reset-link" title="Revert to your registered address">↩ Use registered address</button>
+                    <?php endif; ?>
+                  </div>
+                  <?php if (!$is_custom && $registered_address): ?>
+                    <!-- Showing registered address — read-only with edit toggle -->
+                    <div class="addr-display">
+                      <span class="addr-display-text"><?= htmlspecialchars($delivery_addr) ?></span>
+                      <button type="button" class="addr-edit-btn" onclick="toggleAddrEdit(this)">✏️ Edit</button>
+                    </div>
+                    <div class="addr-edit-area" style="display:none;">
+                      <textarea name="delivery_address" rows="4" class="addr-input"><?= htmlspecialchars($delivery_addr) ?></textarea>
+                      <div style="display:flex;gap:8px;margin-top:8px;">
+                        <button type="submit" name="save_fulfillment" class="btn-gold" style="flex:1;justify-content:center;">Save</button>
+                        <button type="button" class="btn-outline" style="flex:1;justify-content:center;" onclick="toggleAddrEdit(this.closest('.delivery-addr-group').querySelector('.addr-edit-btn'))">Cancel</button>
+                      </div>
+                    </div>
+                    <input type="hidden" name="delivery_address" value="<?= htmlspecialchars($delivery_addr) ?>"/>
+                  <?php else: ?>
+                    <!-- Custom address — editable -->
+                    <textarea name="delivery_address" rows="2" class="addr-input" placeholder="House No., Street, Barangay, City"><?= htmlspecialchars($delivery_addr) ?></textarea>
+                    <button type="submit" name="save_fulfillment" class="btn-gold" style="margin-top:10px;">Save Address</button>
+                    <input type="hidden" name="reset_address" value="0"/>
+                  <?php endif; ?>
+                </div>
+              <?php else: ?>
+                <input type="hidden" name="delivery_address" value=""/>
+              <?php endif; ?>
+              <input type="hidden" name="save_fulfillment" value="1"/>
+            </form>
+            <?php if ($fulfillment === 'pickup'): ?>
+              <p class="pickup-note">📍 Overdose Cafe · Manila, PH &mdash; Ready in ~15 mins</p>
+            <?php endif; ?>
+          </div>
+
           <!-- Voucher -->
           <div class="voucher-box">
             <h4>Apply Voucher</h4>
@@ -215,6 +318,25 @@ require_once 'includes/header.php';
             <div class="summary-row discount">
               <span>Voucher (<?= htmlspecialchars($_SESSION['voucher_code']) ?>)</span>
               <span>−₱<?= number_format($disc_applied, 2) ?></span>
+            </div>
+          <?php endif; ?>
+          <?php if ($fulfillment === 'delivery'): ?>
+            <div class="summary-row" style="color:var(--cream);">
+              <span>Delivery Fee</span>
+              <span>+₱50.00</span>
+            </div>
+          <?php endif; ?>
+          <div class="summary-divider"></div>
+          <div class="summary-row" style="align-items:center;">
+            <span>Fulfillment</span>
+            <span class="fulfillment-badge <?= $fulfillment === 'delivery' ? 'badge-delivery' : 'badge-pickup' ?>">
+              <?= $fulfillment === 'delivery' ? '🛵 Delivery' : '🏪 Pick Up' ?>
+            </span>
+          </div>
+          <?php if ($fulfillment === 'delivery' && $delivery_addr): ?>
+            <div class="summary-row" style="font-size:0.75rem;color:var(--muted2);gap:8px;flex-direction:column;align-items:flex-start;">
+              <span style="color:var(--muted);font-size:0.72rem;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;">Deliver to</span>
+              <span><?= htmlspecialchars($delivery_addr) ?></span>
             </div>
           <?php endif; ?>
           <div class="summary-divider"></div>
@@ -411,8 +533,215 @@ require_once 'includes/header.php';
 
   .empty-icon { font-size: 3rem; margin-bottom: 16px; opacity: 0.4; }
 
+  /* ── FULFILLMENT ── */
+  .fulfillment-box {
+    margin-top: 24px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 20px;
+  }
+
+  .fulfillment-box h4 {
+    font-family: 'Playfair Display', serif;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--cream);
+    margin-bottom: 0;
+  }
+
+  .fulfillment-options {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .fulfillment-option {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    background: var(--panel);
+    user-select: none;
+  }
+
+  .fulfillment-option input[type="radio"] { display: none; }
+
+  .fulfillment-option:hover {
+    border-color: rgba(212,175,90,0.4);
+    background: rgba(212,175,90,0.04);
+  }
+
+  .fulfillment-option.selected {
+    border-color: var(--gold);
+    background: rgba(212,175,90,0.08);
+  }
+
+  .fulfillment-icon { font-size: 1.4rem; line-height: 1; }
+
+  .fulfillment-label {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--cream);
+    margin-bottom: 2px;
+  }
+
+  .fulfillment-desc {
+    font-size: 0.72rem;
+    color: var(--muted);
+  }
+
+  .fulfillment-option.selected .fulfillment-label { color: var(--gold); }
+
+  .delivery-addr-group {
+    margin-top: 14px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .addr-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--gold);
+    opacity: 0.8;
+    margin-bottom: 7px;
+  }
+
+  .addr-input {
+    width: 100%;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    padding: 12px 16px;
+    color: var(--cream);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.9rem;
+    outline: none;
+    resize: vertical;
+    min-height: 90px;
+    transition: border-color 0.2s;
+  }
+
+  .addr-input:focus { border-color: var(--gold); }
+  .addr-input::placeholder { color: rgba(245,237,216,0.2); }
+
+  .pickup-note {
+    margin-top: 12px;
+    font-size: 0.75rem;
+    color: var(--muted);
+    border-top: 1px solid var(--border);
+    padding-top: 12px;
+  }
+
+  .fulfillment-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 20px;
+    border: 1px solid;
+  }
+
+  .badge-pickup {
+    color: var(--gold);
+    border-color: rgba(212,175,90,0.3);
+    background: rgba(212,175,90,0.08);
+  }
+
+  .badge-delivery {
+    color: #5B9BD4;
+    border-color: rgba(91,155,212,0.3);
+    background: rgba(91,155,212,0.08);
+  }
+
+  .addr-label-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 7px;
+  }
+
+  .addr-reset-link {
+    background: none;
+    border: none;
+    color: var(--gold);
+    font-size: 0.72rem;
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 0;
+    text-decoration: underline;
+    opacity: 0.75;
+    transition: opacity 0.2s;
+  }
+
+  .addr-reset-link:hover { opacity: 1; }
+
+  .addr-display {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    padding: 10px 14px;
+  }
+
+  .addr-display-text {
+    font-size: 0.85rem;
+    color: var(--cream);
+    line-height: 1.5;
+    flex: 1;
+  }
+
+  .addr-edit-btn {
+    background: none;
+    border: none;
+    color: var(--gold);
+    font-size: 0.75rem;
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 0;
+    white-space: nowrap;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+  }
+
+  .addr-edit-btn:hover { opacity: 1; }
+
   @media (max-width: 900px) { .cart-layout { grid-template-columns: 1fr; } }
 </style>
+
+<script>
+function toggleAddrEdit(editBtn) {
+  var group = editBtn.closest('.delivery-addr-group');
+  var display = group.querySelector('.addr-display');
+  var editArea = group.querySelector('.addr-edit-area');
+  var hiddenInput = group.querySelector('input[type="hidden"][name="delivery_address"]');
+  var isEditing = editArea.style.display !== 'none';
+  if (isEditing) {
+    editArea.style.display = 'none';
+    display.style.display = 'flex';
+    if (hiddenInput) hiddenInput.disabled = false;
+    editBtn.textContent = '✏️ Edit';
+  } else {
+    editArea.style.display = 'block';
+    display.style.display = 'none';
+    if (hiddenInput) hiddenInput.disabled = true;
+    editBtn.textContent = '✏️ Edit';
+  }
+}
+</script>
 
 </body>
 </html>

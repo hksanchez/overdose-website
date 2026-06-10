@@ -113,13 +113,33 @@ $status_colors = [
           </div>
 
           <div class="detail-totals">
-            <?php if ($detail_order['discount'] > 0): ?>
+            <?php
+              // Calculate items subtotal to derive delivery fee
+              $items_subtotal = 0;
+              foreach ($detail_items as $it) {
+                  $items_subtotal += $it['price'] * $it['quantity'];
+              }
+              $detail_disc = $detail_order['discount'] ?? 0;
+              $detail_fulfillment = $detail_order['fulfillment_type'] ?? 'pickup';
+              $detail_delivery_fee = ($detail_fulfillment === 'delivery') ? 50.00 : 0.00;
+            ?>
+            <div class="detail-total-row">
+              <span>Subtotal</span>
+              <span>₱<?= number_format($items_subtotal, 2) ?></span>
+            </div>
+            <?php if ($detail_disc > 0): ?>
               <div class="detail-total-row">
                 <span>Voucher Discount</span>
-                <span style="color:var(--success);">−₱<?= number_format($detail_order['discount'], 2) ?></span>
+                <span style="color:var(--success);">−₱<?= number_format($detail_disc, 2) ?></span>
               </div>
             <?php endif; ?>
-            <div class="detail-total-row" style="font-weight:700;font-size:1rem;color:var(--cream);">
+            <?php if ($detail_delivery_fee > 0): ?>
+              <div class="detail-total-row">
+                <span>Delivery Fee</span>
+                <span style="color:var(--cream);">+₱<?= number_format($detail_delivery_fee, 2) ?></span>
+              </div>
+            <?php endif; ?>
+            <div class="detail-total-row" style="font-weight:700;font-size:1rem;color:var(--cream);border-top:1px solid var(--border);padding-top:12px;margin-top:4px;">
               <span>Total Paid</span>
               <span style="color:var(--gold);">₱<?= number_format($detail_order['total_amount'], 2) ?></span>
             </div>
@@ -164,6 +184,22 @@ $status_colors = [
               <span class="gold-badge" style="margin-top:6px;display:inline-block;"><?= htmlspecialchars($detail_order['voucher_code']) ?></span>
             </div>
           <?php endif; ?>
+
+          <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);">
+            <p style="font-size:0.72rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:8px;">Fulfillment</p>
+            <?php if (($detail_order['fulfillment_type'] ?? 'pickup') === 'delivery'): ?>
+              <span class="fulfillment-badge-detail badge-delivery-detail">🛵 Delivery</span>
+              <?php if (!empty($detail_order['delivery_address'])): ?>
+                <div style="margin-top:10px;">
+                  <p style="font-size:0.72rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:4px;">Deliver to</p>
+                  <p style="font-size:0.83rem;color:var(--cream);line-height:1.5;"><?= htmlspecialchars($detail_order['delivery_address']) ?></p>
+                </div>
+              <?php endif; ?>
+            <?php else: ?>
+              <span class="fulfillment-badge-detail badge-pickup-detail">🏪 Pick Up</span>
+              <p style="font-size:0.75rem;color:var(--muted);margin-top:6px;">📍 Overdose Cafe · Manila, PH</p>
+            <?php endif; ?>
+          </div>
         </div>
       </div>
 
@@ -384,6 +420,29 @@ $status_colors = [
   }
 
   .step-line.done { background: var(--gold); }
+
+  .fulfillment-badge-detail {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    padding: 4px 12px;
+    border-radius: 20px;
+    border: 1px solid;
+  }
+
+  .badge-pickup-detail {
+    color: var(--gold);
+    border-color: rgba(212,175,90,0.3);
+    background: rgba(212,175,90,0.08);
+  }
+
+  .badge-delivery-detail {
+    color: #5B9BD4;
+    border-color: rgba(91,155,212,0.3);
+    background: rgba(91,155,212,0.08);
+  }
 
   @media (max-width: 900px) { .order-detail-grid { grid-template-columns: 1fr; } }
 </style>
