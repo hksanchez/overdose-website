@@ -133,8 +133,10 @@ require_once 'includes/header.php';
     <!-- Danger zone: logout -->
     <div class="settings-card danger-card" style="margin-top:28px;">
       <div class="settings-card-header" style="color:var(--error);">Session</div>
-      <p style="font-size:0.83rem;color:var(--muted);margin-bottom:16px;">Sign out of your current session on this device.</p>
-      <a href="logout.php" class="btn-danger">Sign Out</a>
+      <div style="padding:24px;">
+        <p style="font-size:0.83rem;color:var(--muted);margin-bottom:16px;">Sign out of your current session on this device.</p>
+        <a href="logout.php" class="btn-danger">Sign Out</a>
+      </div>
     </div>
 
   </main>
@@ -142,7 +144,7 @@ require_once 'includes/header.php';
 
 <footer class="oc-footer">
   <div>© <?= date('Y') ?> Overdose Cafe · Manila, PH</div>
-  <span>Crafted with ☕ and too much caffeine</span>
+  <span>Intentional spaces. Exceptional coffee.</span>
 </footer>
 
 <style>
@@ -261,7 +263,6 @@ require_once 'includes/header.php';
     cursor: pointer;
     text-decoration: none;
     transition: all 0.2s;
-    margin: 0 24px 24px;
   }
 
   .btn-danger:hover {

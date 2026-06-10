@@ -50,7 +50,7 @@ require_once 'includes/header.php';
 
 <!-- HERO -->
 <section class="catalog-hero">
-  <div class="hero-label">Overdose Cafe · Full Menu</div>
+  <div class="hero-label">Full Menu</div>
   <h1>The Overdose<br/><em>Catalog</em></h1>
   <p>Specialty coffee and handcrafted pastries for those who refuse to settle for ordinary. Freshly brewed and baked daily in Manila.</p>
 </section>
@@ -178,7 +178,7 @@ require_once 'includes/header.php';
 
 <footer class="oc-footer">
   <div>© <?= date('Y') ?> Overdose Cafe · Manila, PH</div>
-  <span>Crafted with ☕ and too much caffeine</span>
+  <span>Intentional spaces. Exceptional coffee.</span>
 </footer>
 
 <style>

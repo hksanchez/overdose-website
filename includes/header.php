@@ -377,7 +377,7 @@ if (isset($_SESSION['cart'])) {
   </ul>
 
   <a href="cart.php" class="nav-cart">
-    ☕ Cart
+    🛒  Cart
     <span class="cart-badge"><?= $cart_count ?></span>
   </a>
 

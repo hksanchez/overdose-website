@@ -197,7 +197,7 @@ $status_colors = [
               <?php endif; ?>
             <?php else: ?>
               <span class="fulfillment-badge-detail badge-pickup-detail">🏪 Pick Up</span>
-              <p style="font-size:0.75rem;color:var(--muted);margin-top:6px;">📍 Overdose Cafe · Manila, PH</p>
+              <p style="font-size:0.75rem;color:var(--muted);margin-top:6px;">📍 Overdose Cafe - 32nd Street, 7th Avenue, Manila, 1630</p>
             <?php endif; ?>
           </div>
         </div>
@@ -255,7 +255,7 @@ $status_colors = [
 
 <footer class="oc-footer">
   <div>© <?= date('Y') ?> Overdose Cafe · Manila, PH</div>
-  <span>Crafted with ☕ and too much caffeine</span>
+  <span>Intentional spaces. Exceptional coffee.</span>
 </footer>
 
 <style>

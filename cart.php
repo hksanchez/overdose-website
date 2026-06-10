@@ -293,7 +293,74 @@ require_once 'includes/header.php';
               <input type="hidden" name="save_fulfillment" value="1"/>
             </form>
             <?php if ($fulfillment === 'pickup'): ?>
-              <p class="pickup-note">📍 Overdose Cafe · Manila, PH &mdash; Ready in ~15 mins</p>
+              <p class="pickup-note">📍 Overdose Cafe - 32nd Street, 7th Avenue, Manila, 1630</p>
+            <?php endif; ?>
+          </div>
+
+          <!-- Payment Instructions -->
+          <div class="payment-guide-box" id="payment-guide-box">
+            <?php if ($fulfillment === 'pickup'): ?>
+            <div class="payment-guide pickup-guide">
+              <div class="payment-guide-header">
+                <span class="payment-guide-icon">💳</span>
+                <div>
+                  <div class="payment-guide-title">Payment Methods — Pick Up</div>
+                  <div class="payment-guide-subtitle">Pay when you collect your order at the store</div>
+                </div>
+              </div>
+              <div class="payment-methods-grid">
+                <div class="payment-method-card">
+                  <div class="pm-label">Cash</div>
+                  <div class="pm-desc">Pay at the counter upon pick-up. Any denomination accepted.</div>
+                </div>
+                <div class="payment-method-card">
+                  <div class="pm-label">GCash QR</div>
+                  <div class="pm-desc">Scan our QR code at the counter. Show your payment confirmation to the cashier.</div>
+                </div>
+              </div>
+              <div class="payment-guide-steps">
+                <div class="step-label">📋 Pick-Up Steps</div>
+                <ol class="step-list">
+                  <li>Place your order and monitor your order status in <strong>My Orders</strong>.</li>
+                  <li> Head over to <strong>Overdose Cafe</strong> once the status shows <strong>"Ready"</strong>.</li>
+                  <li>Show your order number to the cashier.</li>
+                  <li>Pay via <strong>Cash</strong> or scan the <strong>GCash QR</strong> code at the counter.</li>
+                  <li>Enjoy your order!</li>
+                </ol>
+              </div>
+            </div>
+            <?php else: ?>
+            <div class="payment-guide delivery-guide">
+              <div class="payment-guide-header">
+                <span class="payment-guide-icon">🛵</span>
+                <div>
+                  <div class="payment-guide-title">Payment Method — Delivery</div>
+                  <div class="payment-guide-subtitle">Pay upon receiving your order at your door</div>
+                </div>
+              </div>
+              <div class="payment-methods-grid single">
+                <div class="payment-method-card">
+                  <div class="pm-label">Cash Only</div>
+                  <div class="pm-desc">Delivery orders only accept cash payment upon receipt.</div>
+                </div>
+              </div>
+              <div class="payment-guide-alert">
+
+                <div>
+                  <strong>Please bring the exact amount.</strong> Our riders may not carry change. Prepare the exact total shown above to ensure a smooth handover.
+                </div>
+              </div>
+              <div class="payment-guide-steps">
+                <div class="step-label">📋 Delivery Steps</div>
+                <ol class="step-list">
+                  <li>Place your order and monitor your order status in <strong>My Orders</strong>.</li>
+                  <li>Prepare the <strong>exact cash amount</strong> equal to your total.</li>
+                  <li>Our rider will arrive at your address — delivery usually takes <strong>10–30 mins</strong> depending on your location.</li>
+                  <li>Hand over the exact cash to the rider upon receipt.</li>
+                  <li>Enjoy your order!</li>
+                </ol>
+              </div>
+            </div>
             <?php endif; ?>
           </div>
 
@@ -361,7 +428,7 @@ require_once 'includes/header.php';
 
 <footer class="oc-footer">
   <div>© <?= date('Y') ?> Overdose Cafe · Manila, PH</div>
-  <span>Crafted with ☕ and too much caffeine</span>
+  <span>Intentional spaces. Exceptional coffee.</span>
 </footer>
 
 <style>
@@ -720,6 +787,136 @@ require_once 'includes/header.php';
   .addr-edit-btn:hover { opacity: 1; }
 
   @media (max-width: 900px) { .cart-layout { grid-template-columns: 1fr; } }
+
+  /* ── PAYMENT GUIDE ── */
+  .payment-guide-box {
+    margin-top: 24px;
+  }
+
+  .payment-guide {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 20px;
+    animation: fadeInGuide 0.3s ease;
+  }
+
+  @keyframes fadeInGuide {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .pickup-guide  { border-left: 3px solid var(--gold); }
+  .delivery-guide { border-left: 3px solid #5B9BD4; }
+
+  .payment-guide-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .payment-guide-icon { font-size: 1.6rem; line-height: 1; }
+
+  .payment-guide-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--cream);
+    margin-bottom: 2px;
+  }
+
+  .payment-guide-subtitle {
+    font-size: 0.72rem;
+    color: var(--muted);
+  }
+
+  .payment-methods-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .payment-methods-grid.single {
+    grid-template-columns: 1fr;
+    max-width: 260px;
+  }
+
+  .payment-method-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 14px 16px;
+    transition: border-color 0.2s, background 0.2s;
+  }
+
+  .pickup-guide .payment-method-card:hover {
+    border-color: rgba(212,175,90,0.4);
+    background: rgba(212,175,90,0.04);
+  }
+
+  .delivery-guide .payment-method-card:hover {
+    border-color: rgba(91,155,212,0.4);
+    background: rgba(91,155,212,0.04);
+  }
+
+  .pm-icon { font-size: 1.3rem; margin-bottom: 6px; line-height: 1; }
+
+  .pm-label {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--cream);
+    margin-bottom: 4px;
+  }
+
+  .pm-desc {
+    font-size: 0.72rem;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  .payment-guide-alert {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    background: rgba(212,155,50,0.08);
+    border: 1px solid rgba(212,155,50,0.25);
+    border-radius: 3px;
+    padding: 12px 14px;
+    font-size: 0.78rem;
+    color: var(--cream);
+    line-height: 1.55;
+    margin-bottom: 16px;
+  }
+
+  .alert-icon { font-size: 1rem; margin-top: 1px; flex-shrink: 0; }
+
+  .payment-guide-steps {
+    border-top: 1px solid var(--border);
+    padding-top: 14px;
+  }
+
+  .step-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: var(--gold);
+    opacity: 0.75;
+    margin-bottom: 10px;
+  }
+
+  .step-list {
+    margin: 0;
+    padding-left: 18px;
+    color: var(--muted);
+    font-size: 0.78rem;
+    line-height: 1.7;
+  }
+
+  .step-list li { margin-bottom: 3px; }
+  .step-list strong { color: var(--cream); font-weight: 600; }
 </style>
 
 <script>
