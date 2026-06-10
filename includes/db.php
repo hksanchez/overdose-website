@@ -88,7 +88,7 @@ $row = $check->fetch_assoc();
 if ($row['cnt'] == 0) {
     $products = [
         // Coffee
-        ['Overdose Latte', 'coffee', 139.00, 'Bold, triple-shot espresso blended with smooth, velvety milk for the ultimate kick.', 'assets/products/coffee10.jpg', null, 0],
+        ['Overdose Latte', 'coffee', 139.00, 'Bold, triple-shot espresso blended with smooth, velvety milk for the ultimate kick.', 'assets/products/coffee5.jpg', null, 0],
         ['Caramel Macchiato', 'coffee', 129.00, 'Creamy steamed milk marked with espresso and drizzled with sweet caramel.', 'assets/products/coffee6.jpg', null, 0],
         ['Seasalt Caramel Macchiato', 'coffee', 139.00, 'A sweet and savory blend of rich caramel, bold espresso, and a touch of sea salt.', 'assets/products/coffee7.jpg', null, 0],
         ['Caffe Latte', 'coffee', 109.00, 'A comforting, classic balance of smooth espresso and silky steamed milk.', 'assets/products/coffee8.jpg', 119.00, 1],
