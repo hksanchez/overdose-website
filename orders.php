@@ -50,11 +50,12 @@ if (isset($_GET['view'])) {
 require_once 'includes/header.php';
 
 $status_colors = [
-    'Pending'    => '#D4AF5A',
-    'Preparing'  => '#5B9BD4',
-    'Ready'      => '#5BAD7E',
-    'Completed'  => '#5BAD7E',
-    'Cancelled'  => '#E05555',
+    'Pending'          => '#D4AF5A',
+    'Preparing'        => '#5B9BD4',
+    'Ready'            => '#5BAD7E',
+    'Out for Delivery' => '#9B7BD4',
+    'Completed'        => '#5BAD7E',
+    'Cancelled'        => '#E05555',
 ];
 ?>
 
@@ -151,28 +152,89 @@ $status_colors = [
           <h3>Order Status</h3>
           <?php
             $status = $detail_order['status'];
-            $steps = ['Pending', 'Preparing', 'Ready', 'Completed'];
+            $fulfillment_type = $detail_order['fulfillment_type'] ?? 'pickup';
+
+            // Steps depend on fulfillment type
+            if ($fulfillment_type === 'delivery') {
+                $steps = ['Pending', 'Preparing', 'Out for Delivery', 'Completed'];
+            } else {
+                $steps = ['Pending', 'Preparing', 'Ready', 'Completed'];
+            }
+
             $current_step = array_search($status, $steps);
             if ($current_step === false) $current_step = -1;
           ?>
           <div class="status-track">
-            <?php foreach ($steps as $i => $step): ?>
-              <div class="status-step <?= $i <= $current_step ? 'done' : '' ?> <?= $step === $status && $status !== 'Completed' ? 'current' : '' ?>">
+            <?php foreach ($steps as $i => $step):
+              $is_done    = $i <= $current_step;
+              $is_current = $step === $status && $status !== 'Completed';
+              $step_color = $step === 'Out for Delivery' ? '#9B7BD4' : 'var(--gold)';
+            ?>
+              <div class="status-step <?= $is_done ? 'done' : '' ?> <?= $is_current ? 'current' : '' ?>"
+                   style="<?= $is_done || $is_current ? '--step-color:'.$step_color.';' : '' ?>">
                 <div class="step-dot"></div>
                 <div class="step-label"><?= $step ?></div>
               </div>
               <?php if ($i < count($steps) - 1): ?>
-                <div class="step-line <?= $i < $current_step ? 'done' : '' ?>"></div>
+                <div class="step-line <?= $i < $current_step ? 'done' : '' ?>"
+                     style="<?= $i < $current_step ? '--line-color:'.$step_color.';' : '' ?>"></div>
               <?php endif; ?>
             <?php endforeach; ?>
           </div>
 
+          <!-- Status description box -->
           <?php if ($status === 'Cancelled'): ?>
-            <div style="margin-top:20px;" class="alert alert-error">This order was cancelled.</div>
+            <div class="status-info-box" style="border-color:var(--error);background:rgba(224,85,85,0.07);">
+              <div class="status-info-icon">❌</div>
+              <div>
+                <div class="status-info-title" style="color:var(--error);">Order Cancelled</div>
+                <div class="status-info-desc">This order has been cancelled.</div>
+              </div>
+            </div>
+          <?php elseif ($status === 'Pending'): ?>
+            <div class="status-info-box" style="border-color:rgba(212,175,90,0.3);background:rgba(212,175,90,0.07);">
+              <div class="status-info-icon">⏳</div>
+              <div>
+                <div class="status-info-title" style="color:var(--gold);">Awaiting Confirmation</div>
+                <div class="status-info-desc">Your order has been received and is waiting to be confirmed.</div>
+              </div>
+            </div>
+          <?php elseif ($status === 'Preparing'): ?>
+            <div class="status-info-box" style="border-color:rgba(91,155,212,0.3);background:rgba(91,155,212,0.07);">
+              <div class="status-info-icon">☕</div>
+              <div>
+                <div class="status-info-title" style="color:#5B9BD4;">Being Prepared</div>
+                <div class="status-info-desc">Our team is preparing your order right now!</div>
+              </div>
+            </div>
+          <?php elseif ($status === 'Out for Delivery'): ?>
+            <div class="status-info-box" style="border-color:rgba(155,123,212,0.3);background:rgba(155,123,212,0.07);">
+              <div class="status-info-icon">🛵</div>
+              <div>
+                <div class="status-info-title" style="color:#9B7BD4;">Out for Delivery</div>
+                <div class="status-info-desc">Your order is on its way! Our rider is heading to your address.</div>
+              </div>
+            </div>
+          <?php elseif ($status === 'Ready'): ?>
+            <div class="status-info-box" style="border-color:rgba(91,173,126,0.3);background:rgba(91,173,126,0.07);">
+              <div class="status-info-icon">🏪</div>
+              <div>
+                <div class="status-info-title" style="color:var(--success);">Ready for Pick Up</div>
+                <div class="status-info-desc">Your order is ready! Please pick it up at the store.</div>
+              </div>
+            </div>
+          <?php elseif ($status === 'Completed'): ?>
+            <div class="status-info-box" style="border-color:rgba(91,173,126,0.3);background:rgba(91,173,126,0.07);">
+              <div class="status-info-icon">✅</div>
+              <div>
+                <div class="status-info-title" style="color:var(--success);">Order Completed</div>
+                <div class="status-info-desc">Thank you! We hope you enjoyed your order.</div>
+              </div>
+            </div>
           <?php endif; ?>
 
           <?php if ($status === 'Pending'): ?>
-            <form method="POST" style="margin-top:20px;" onsubmit="return confirm('Are you sure you want to cancel this order?')">
+            <form method="POST" style="margin-top:16px;" onsubmit="return confirm('Are you sure you want to cancel this order?')">
               <input type="hidden" name="order_id" value="<?= $detail_order['id'] ?>"/>
               <button type="submit" name="cancel_order" class="btn-cancel" style="width:100%;justify-content:center;padding:10px;">Cancel Order</button>
             </form>
@@ -397,19 +459,20 @@ $status_colors = [
     transition: all 0.3s;
   }
 
-  .status-step.done .step-dot { background: var(--gold); border-color: var(--gold); }
-  .status-step.current .step-dot { background: var(--gold); border-color: var(--gold); box-shadow: 0 0 0 4px rgba(212,175,90,0.2); }
+  .status-step.done .step-dot { background: var(--step-color, var(--gold)); border-color: var(--step-color, var(--gold)); }
+  .status-step.current .step-dot { background: var(--step-color, var(--gold)); border-color: var(--step-color, var(--gold)); box-shadow: 0 0 0 4px rgba(212,175,90,0.2); }
 
   .step-label {
-    font-size: 0.65rem;
+    font-size: 0.62rem;
     font-weight: 600;
     letter-spacing: 0.5px;
     color: var(--muted2);
     white-space: nowrap;
+    text-align: center;
   }
 
   .status-step.done .step-label,
-  .status-step.current .step-label { color: var(--gold); }
+  .status-step.current .step-label { color: var(--step-color, var(--gold)); }
 
   .step-line {
     flex: 1;
@@ -419,7 +482,22 @@ $status_colors = [
     margin-bottom: 20px;
   }
 
-  .step-line.done { background: var(--gold); }
+  .step-line.done { background: var(--line-color, var(--gold)); }
+
+  /* Status info box */
+  .status-info-box {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px 16px;
+    border: 1px solid;
+    border-radius: 4px;
+    margin-top: 4px;
+  }
+
+  .status-info-icon { font-size: 1.4rem; line-height: 1; flex-shrink: 0; margin-top: 2px; }
+  .status-info-title { font-size: 0.88rem; font-weight: 700; margin-bottom: 3px; }
+  .status-info-desc { font-size: 0.75rem; color: var(--muted); line-height: 1.5; }
 
   .fulfillment-badge-detail {
     display: inline-flex;
