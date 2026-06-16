@@ -266,6 +266,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     .auth-switch a:hover { text-decoration: underline; }
 
+    .admin-access {
+      margin-top: 20px;
+      padding-top: 20px;
+      border-top: 1px solid rgba(212,175,90,0.1);
+      text-align: center;
+    }
+
+    .admin-access-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 9px 20px;
+      border: 1px solid rgba(212,175,90,0.2);
+      border-radius: 3px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: rgba(212,175,90,0.6);
+      text-decoration: none;
+      letter-spacing: 0.5px;
+      transition: all 0.2s;
+    }
+
+    .admin-access-btn:hover {
+      color: var(--gold);
+      border-color: rgba(212,175,90,0.5);
+      background: rgba(212,175,90,0.05);
+    }
+
     @media (max-width: 820px) {
       .auth-wrap { grid-template-columns: 1fr; }
       .auth-brand { display: none; }
@@ -310,6 +338,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     <div class="auth-switch">
       Don't have an account? <a href="register.php">Create one</a>
+    </div>
+
+    <div class="admin-access">
+      <a href="admin.php" class="admin-access-btn">
+        <span>⚙️</span> Admin Portal
+      </a>
     </div>
   </div>
 </div>
