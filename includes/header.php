@@ -1,12 +1,13 @@
 <?php
 // includes/header.php
 // Requires session_start() and db.php to be called before this include
-if (!isset($_SESSION['user_id'])) {
-    header("Location: login.php");
-    exit();
-}
-$user_name = $_SESSION['user_name'];
-$user_full = $_SESSION['user_full'];
+
+// Check if the user is logged in (NO redirect here anymore)
+$is_logged_in = isset($_SESSION['user_id']);
+
+// Safely assign variables depending on auth status
+$user_name = $is_logged_in ? $_SESSION['user_name'] : 'Guest';
+$user_full = $is_logged_in ? $_SESSION['user_full'] : 'Guest User';
 
 // Cart count from session
 $cart_count = 0;
@@ -370,21 +371,29 @@ if (isset($_SESSION['cart'])) {
 
 <nav class="oc-nav">
   <a href="products.php" class="nav-logo">Overdose Cafe</a>
+  
   <ul class="nav-links">
     <li><a href="products.php" <?= (basename($_SERVER['PHP_SELF']) === 'products.php') ? 'class="active"' : '' ?>>Menu</a></li>
-    <li><a href="orders.php" <?= (basename($_SERVER['PHP_SELF']) === 'orders.php') ? 'class="active"' : '' ?>>My Orders</a></li>
-    <li><a href="settings.php" <?= (basename($_SERVER['PHP_SELF']) === 'settings.php') ? 'class="active"' : '' ?>>Settings</a></li>
+    <!-- Only show these links if the user is logged in -->
+    <?php if ($is_logged_in): ?>
+        <li><a href="orders.php" <?= (basename($_SERVER['PHP_SELF']) === 'orders.php') ? 'class="active"' : '' ?>>My Orders</a></li>
+        <li><a href="settings.php" <?= (basename($_SERVER['PHP_SELF']) === 'settings.php') ? 'class="active"' : '' ?>>Settings</a></li>
+    <?php endif; ?>
   </ul>
 
   <a href="cart.php" class="nav-cart">
-    🛒  Cart
+    ☕ Cart
     <span class="cart-badge"><?= $cart_count ?></span>
   </a>
 
-  <div class="nav-user">
-    <div class="nav-avatar"><?= strtoupper(substr($user_name, 0, 1)) ?></div>
-    <span class="nav-username"><?= htmlspecialchars($user_name) ?></span>
-  </div>
-
-  <a href="logout.php" class="nav-logout">Sign Out</a>
+  <!-- Switch between User Profile and Login Button -->
+  <?php if ($is_logged_in): ?>
+      <div class="nav-user">
+        <div class="nav-avatar"><?= strtoupper(substr($user_name, 0, 1)) ?></div>
+        <span class="nav-username"><?= htmlspecialchars($user_name) ?></span>
+      </div>
+      <a href="logout.php" class="nav-logout">Sign Out</a>
+  <?php else: ?>
+      <a href="login.php" class="btn-gold" style="padding: 9px 20px; font-size: 0.75rem;">Sign In</a>
+  <?php endif; ?>
 </nav>
