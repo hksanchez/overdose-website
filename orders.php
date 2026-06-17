@@ -18,8 +18,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cancel_order'])) {
     exit();
 }
 
-// Fetch orders for user
-$orders = $conn->prepare("SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC");
+// Determine active tab (default to 'current')
+$tab = isset($_GET['tab']) && $_GET['tab'] === 'history' ? 'history' : 'current';
+
+// Fetch orders for user based on selected tab
+if ($tab === 'history') {
+    $orders = $conn->prepare("SELECT * FROM orders WHERE user_id = ? AND status IN ('Completed', 'Cancelled') ORDER BY created_at DESC");
+} else {
+    $orders = $conn->prepare("SELECT * FROM orders WHERE user_id = ? AND status NOT IN ('Completed', 'Cancelled') ORDER BY created_at DESC");
+}
 $orders->bind_param("i", $uid);
 $orders->execute();
 $orders_result = $orders->get_result();
@@ -270,11 +277,18 @@ $status_colors = [
       <h1 class="page-title">My Orders</h1>
       <p class="page-subtitle">Your order history and transaction status.</p>
 
+      <div class="order-tabs">
+        <a href="orders.php?tab=current" class="tab-link <?= $tab === 'current' ? 'active' : '' ?>">Current Orders</a>
+        <a href="orders.php?tab=history" class="tab-link <?= $tab === 'history' ? 'active' : '' ?>">Order History</a>
+      </div>
+
       <?php if ($orders_result->num_rows === 0): ?>
         <div class="empty-orders">
           <div style="font-size:3rem;opacity:0.3;margin-bottom:16px;">📋</div>
-          <p style="color:var(--muted);">No orders yet.</p>
-          <a href="products.php" class="btn-gold" style="margin-top:16px;">Start Ordering</a>
+          <p style="color:var(--muted);">No <?= $tab === 'current' ? 'current' : 'completed' ?> orders found.</p>
+          <?php if ($tab === 'current'): ?>
+            <a href="products.php" class="btn-gold" style="margin-top:16px;">Start Ordering</a>
+          <?php endif; ?>
         </div>
       <?php else: ?>
         <div class="orders-list">
@@ -323,6 +337,33 @@ $status_colors = [
 <style>
   .orders-list { display: flex; flex-direction: column; gap: 12px; }
 
+  /* Added styles for the Order Tabs */
+  .order-tabs {
+    display: flex;
+    gap: 20px;
+    margin-bottom: 24px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .tab-link {
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 0.95rem;
+    font-weight: 600;
+    padding-bottom: 12px;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+  }
+
+  .tab-link:hover {
+    color: var(--cream);
+  }
+
+  .tab-link.active {
+    color: var(--gold);
+    border-bottom: 2px solid var(--gold);
+  }
+  
   .order-row {
     background: var(--card);
     border: 1px solid var(--border);
