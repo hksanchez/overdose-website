@@ -341,7 +341,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </div>
 
     <div class="admin-access">
-      <a href="admin.php" class="admin-access-btn">
+      <a href="admin_login.php" class="admin-access-btn">
         <span>⚙️</span> Admin Portal
       </a>
     </div>
