@@ -36,9 +36,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_to_cart'])) {
     $msg = 'Added to cart!';
 }
 
-// Fetch products grouped by category
-$coffee   = $conn->query("SELECT * FROM products WHERE category = 'coffee' ORDER BY id");
-$pastries = $conn->query("SELECT * FROM products WHERE category = 'pastries' ORDER BY id");
+// Fetch products grouped by category, joined with inventory stock
+$coffee   = $conn->query("SELECT p.*, COALESCE(i.quantity, 1) AS stock FROM products p LEFT JOIN inventory i ON i.linked_product_id = p.id WHERE p.category = 'coffee' ORDER BY p.id");
+$pastries = $conn->query("SELECT p.*, COALESCE(i.quantity, 1) AS stock FROM products p LEFT JOIN inventory i ON i.linked_product_id = p.id WHERE p.category = 'pastries' ORDER BY p.id");
 
 require_once 'includes/header.php';
 ?>
@@ -89,9 +89,11 @@ require_once 'includes/header.php';
 
       <div class="product-grid">
         <?php while ($p = $coffee->fetch_assoc()):
-          $display_price = ($p['is_promo'] && $p['promo_price']) ? $p['promo_price'] : $p['price'];
+          $is_promo    = $p['is_promo'] && $p['promo_price'];
+          $display_price = $is_promo ? $p['promo_price'] : $p['price'];
+          $out_of_stock  = (int)$p['stock'] <= 0;
         ?>
-          <div class="product-card">
+          <div class="product-card<?= $out_of_stock ? ' out-of-stock' : '' ?>">
             <div class="product-card-img-wrap">
               <!--
                 ╔══════════════════════════════════════════════════════╗
@@ -108,17 +110,28 @@ require_once 'includes/header.php';
                    class="product-img-fluid"
                    onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"/>
               <div class="img-fallback">☕</div>
+              <?php if ($is_promo): ?>
+                <div class="badge-sale">🏷 SALE</div>
+              <?php endif; ?>
+              <?php if ($out_of_stock): ?>
+                <div class="badge-unavailable">NOT AVAILABLE</div>
+              <?php endif; ?>
             </div>
             <div class="product-card-body">
               <h3><?= htmlspecialchars($p['name']) ?></h3>
               <p class="product-desc"><?= htmlspecialchars($p['description']) ?></p>
               <p class="price">
                 ₱<?= number_format($display_price, 2) ?>
+                <?php if ($is_promo): ?>
+                  <span class="price-old">₱<?= number_format($p['price'], 2) ?></span>
+                <?php endif; ?>
               </p>
               <form method="POST" class="card-add-form">
                 <input type="hidden" name="product_id" value="<?= $p['id'] ?>"/>
-                <input type="number" name="qty" value="1" min="1" max="20" class="card-qty"/>
-                <button type="submit" name="add_to_cart" class="btn-card-cart">+ Add to Cart</button>
+                <input type="number" name="qty" value="1" min="1" max="20" class="card-qty"<?= $out_of_stock ? ' disabled' : '' ?>/>
+                <button type="submit" name="add_to_cart" class="btn-card-cart"<?= $out_of_stock ? ' disabled' : '' ?>>
+                  + Add to Cart
+                </button>
               </form>
             </div>
           </div>
@@ -136,9 +149,11 @@ require_once 'includes/header.php';
 
       <div class="product-grid">
         <?php while ($p = $pastries->fetch_assoc()):
-          $display_price = ($p['is_promo'] && $p['promo_price']) ? $p['promo_price'] : $p['price'];
+          $is_promo    = $p['is_promo'] && $p['promo_price'];
+          $display_price = $is_promo ? $p['promo_price'] : $p['price'];
+          $out_of_stock  = (int)$p['stock'] <= 0;
         ?>
-          <div class="product-card">
+          <div class="product-card<?= $out_of_stock ? ' out-of-stock' : '' ?>">
             <div class="product-card-img-wrap">
               <!--
                 ╔══════════════════════════════════════════════════════╗
@@ -155,17 +170,28 @@ require_once 'includes/header.php';
                    class="product-img-fluid"
                    onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"/>
               <div class="img-fallback">🥐</div>
+              <?php if ($is_promo): ?>
+                <div class="badge-sale">🏷 SALE</div>
+              <?php endif; ?>
+              <?php if ($out_of_stock): ?>
+                <div class="badge-unavailable">NOT AVAILABLE</div>
+              <?php endif; ?>
             </div>
             <div class="product-card-body">
               <h3><?= htmlspecialchars($p['name']) ?></h3>
               <p class="product-desc"><?= htmlspecialchars($p['description']) ?></p>
               <p class="price">
                 ₱<?= number_format($display_price, 2) ?>
+                <?php if ($is_promo): ?>
+                  <span class="price-old">₱<?= number_format($p['price'], 2) ?></span>
+                <?php endif; ?>
               </p>
               <form method="POST" class="card-add-form">
                 <input type="hidden" name="product_id" value="<?= $p['id'] ?>"/>
-                <input type="number" name="qty" value="1" min="1" max="20" class="card-qty"/>
-                <button type="submit" name="add_to_cart" class="btn-card-cart">+ Add to Cart</button>
+                <input type="number" name="qty" value="1" min="1" max="20" class="card-qty"<?= $out_of_stock ? ' disabled' : '' ?>/>
+                <button type="submit" name="add_to_cart" class="btn-card-cart"<?= $out_of_stock ? ' disabled' : '' ?>>
+                  + Add to Cart
+                </button>
               </form>
             </div>
           </div>
@@ -429,6 +455,60 @@ require_once 'includes/header.php';
     padding: 3px 8px;
     border-radius: 2px;
     z-index: 1;
+  }
+
+  /* ── SALE BADGE (upper-right of image) ── */
+  .badge-sale {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: #e63946;
+    color: #fff;
+    font-size: 0.62rem;
+    font-weight: 800;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    padding: 4px 9px;
+    border-radius: 3px;
+    z-index: 2;
+    box-shadow: 0 2px 8px rgba(230,57,70,0.45);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  /* ── NOT AVAILABLE BADGE (upper-left of image) ── */
+  .badge-unavailable {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    background: #555;
+    color: #fff;
+    font-size: 0.62rem;
+    font-weight: 800;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    padding: 4px 9px;
+    border-radius: 3px;
+    z-index: 2;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+  }
+
+  /* Dim out-of-stock cards slightly */
+  .product-card.out-of-stock {
+    opacity: 0.75;
+  }
+
+  .product-card.out-of-stock .btn-card-cart {
+    background: rgba(120,120,120,0.12);
+    border-color: rgba(120,120,120,0.2);
+    color: var(--muted);
+    cursor: not-allowed;
+  }
+
+  .product-card.out-of-stock .card-qty {
+    opacity: 0.4;
+    cursor: not-allowed;
   }
 
   .product-card-body { padding: 14px 16px 16px; }

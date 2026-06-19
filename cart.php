@@ -395,7 +395,7 @@ require_once 'includes/header.php';
           <?php endif; ?>
           <div class="summary-divider"></div>
           <div class="summary-row" style="align-items:center;">
-            <span>Fulfillment</span>
+            <span>Order Type</span>
             <span class="fulfillment-badge <?= $fulfillment === 'delivery' ? 'badge-delivery' : 'badge-pickup' ?>">
               <?= $fulfillment === 'delivery' ? '🛵 Delivery' : '🏪 Pick Up' ?>
             </span>

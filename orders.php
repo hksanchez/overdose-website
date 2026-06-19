@@ -255,7 +255,7 @@ $status_colors = [
           <?php endif; ?>
 
           <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);">
-            <p style="font-size:0.72rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:8px;">Fulfillment</p>
+            <p style="font-size:0.72rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:8px;">Order Type</p>
             <?php if (($detail_order['fulfillment_type'] ?? 'pickup') === 'delivery'): ?>
               <span class="fulfillment-badge-detail badge-delivery-detail">🛵 Delivery</span>
               <?php if (!empty($detail_order['delivery_address'])): ?>
