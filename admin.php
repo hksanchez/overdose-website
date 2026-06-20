@@ -10,67 +10,13 @@ if (!isset($_SESSION['admin_id'])) {
 
 // ── LOGOUT ──────────────────────────────────────────────────────────────────
 if (isset($_GET['admin_logout'])) {
-    session_unset();
-    session_destroy();
+    unset($_SESSION['admin_id'], $_SESSION['admin_name'], $_SESSION['admin_user']);
     header("Location: admin_login.php");
     exit();
 }
 
 $admin_name = $_SESSION['admin_name'];
 $admin_user = $_SESSION['admin_user'];
-
-// ── ENSURE COLUMNS EXIST ────────────────────────────────────────────────────
-$conn->query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS fulfillment_type VARCHAR(10) DEFAULT 'pickup'");
-$conn->query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_address TEXT DEFAULT NULL");
-$conn->query("ALTER TABLE inventory ADD COLUMN IF NOT EXISTS linked_product_id INT DEFAULT NULL");
-
-// ── ENSURE ADMIN TABLES EXIST ───────────────────────────────────────────────
-$conn->query("CREATE TABLE IF NOT EXISTS admin_users (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    username VARCHAR(50) NOT NULL UNIQUE,
-    password VARCHAR(255) NOT NULL,
-    full_name VARCHAR(100) NOT NULL,
-    is_active TINYINT(1) DEFAULT 1,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-)");
-
-$conn->query("CREATE TABLE IF NOT EXISTS inventory (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    item_name VARCHAR(100) NOT NULL,
-    category VARCHAR(50) NOT NULL,
-    quantity INT NOT NULL DEFAULT 0,
-    unit VARCHAR(20) NOT NULL DEFAULT 'pcs',
-    low_stock_threshold INT NOT NULL DEFAULT 20,
-    linked_product_id INT DEFAULT NULL,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-)");
-
-// Seed default admin if none
-$chkA = $conn->query("SELECT COUNT(*) as c FROM admin_users");
-if ($chkA->fetch_assoc()['c'] == 0) {
-    $pw = password_hash('admin123', PASSWORD_DEFAULT);
-    $s = $conn->prepare("INSERT INTO admin_users (username, password, full_name) VALUES (?,?,?)");
-    $u = 'admin'; $n = 'Admin';
-    $s->bind_param("sss", $u, $pw, $n);
-    $s->execute();
-}
-
-// Seed inventory if empty
-$chkI = $conn->query("SELECT COUNT(*) as c FROM inventory");
-if ($chkI->fetch_assoc()['c'] == 0) {
-    $conn->query("INSERT INTO inventory (item_name, category, quantity, unit, low_stock_threshold) VALUES
-        ('Cups', 'supplies', 200, 'pcs', 50),
-        ('Lids', 'supplies', 200, 'pcs', 50),
-        ('Straws', 'supplies', 200, 'pcs', 50)");
-    $pastries = $conn->query("SELECT id, name FROM products WHERE category = 'pastries'");
-    if ($pastries) {
-        $ins = $conn->prepare("INSERT INTO inventory (item_name, category, quantity, unit, low_stock_threshold, linked_product_id) VALUES (?, 'pastries', 25, 'pcs', 10, ?)");
-        while ($p = $pastries->fetch_assoc()) {
-            $ins->bind_param("si", $p['name'], $p['id']);
-            $ins->execute();
-        }
-    }
-}
 
 $action_msg = '';
 
@@ -99,10 +45,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $conn->query("UPDATE inventory SET quantity = GREATEST(0, quantity - $qty) WHERE linked_product_id = $pid");
             }
         }
-        $upd = $conn->prepare("UPDATE orders SET status='Preparing' WHERE id=? AND status='Pending'");
+        $upd = $conn->prepare("UPDATE orders SET status='Preparing', is_viewed=0 WHERE id=? AND status='Pending'");
         $upd->bind_param("i", $oid);
         $upd->execute();
-        $action_msg = 'success:Order #' . $oid . ' accepted — inventory updated.';
+        $action_msg = 'success:<a href="admin.php?s=orders&filter=Preparing">Order #' . $oid . ' accepted — inventory updated.</a>';
     }
 
     if (isset($_POST['update_order_status'])) {
@@ -110,10 +56,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $status = $_POST['new_status'];
         $allowed = ['Pending','Preparing','Ready','Out for Delivery','Completed','Cancelled'];
         if (in_array($status, $allowed)) {
-            $upd = $conn->prepare("UPDATE orders SET status=? WHERE id=?");
+            $upd = $conn->prepare("UPDATE orders SET status=?, is_viewed=0 WHERE id=?");
             $upd->bind_param("si", $status, $oid);
             $upd->execute();
-            $action_msg = 'success:Order #' . $oid . ' → ' . $status . '.';
+            $action_msg = 'success:<a href="admin.php?s=orders&filter=' . urlencode($status) . '">Order #' . $oid . ' → ' . htmlspecialchars($status) . '.</a>';
         }
     }
 
@@ -155,6 +101,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $del->bind_param("i", $iid);
         $del->execute();
         $action_msg = 'success:Inventory item removed.';
+    }
+
+    // ── Settings ─────────────────────────────────────────────────────────────
+    if (isset($_POST['update_store_status'])) {
+        $status = $_POST['store_status'] === 'online' ? 'online' : 'offline';
+        $hours = trim($_POST['store_hours']);
+        $upd1 = $conn->prepare("UPDATE site_settings SET setting_value=? WHERE setting_key='store_status'");
+        $upd1->bind_param("s", $status);
+        $upd1->execute();
+        $upd2 = $conn->prepare("UPDATE site_settings SET setting_value=? WHERE setting_key='store_hours'");
+        $upd2->bind_param("s", $hours);
+        $upd2->execute();
+        $action_msg = 'success:Store status updated.';
     }
 
     // ── Products ─────────────────────────────────────────────────────────────
@@ -248,6 +207,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // ═══════════════════════════════════════════════════════════════════════════
 $section = $_GET['s'] ?? 'dashboard';
 
+// Mark orders as viewed if we are on a specific filter tab
+if ($section === 'orders') {
+    $current_filter = $_GET['filter'] ?? 'Pending';
+    if ($current_filter !== 'All') {
+        $fs_esc = $conn->real_escape_string($current_filter);
+        $conn->query("UPDATE orders SET is_viewed = 1 WHERE status = '$fs_esc' AND is_viewed = 0");
+    }
+}
+
 // Dashboard stats
 $today_sales = 0; $today_orders = 0; $completed_orders = 0; $pending_orders = 0;
 $top_item = '—';
@@ -255,11 +223,18 @@ $top_item = '—';
 $ts = $conn->query("SELECT COALESCE(SUM(total_amount),0) as total, COUNT(*) as cnt FROM orders WHERE DATE(created_at)=CURDATE() AND status != 'Cancelled'");
 if ($ts) { $r = $ts->fetch_assoc(); $today_sales = $r['total']; $today_orders = $r['cnt']; }
 
-$co = $conn->query("SELECT COUNT(*) as c FROM orders WHERE status='Completed'");
-if ($co) $completed_orders = $co->fetch_assoc()['c'];
+$status_counts = [];
+$unseen_counts = [];
+$sc_q = $conn->query("SELECT status, COUNT(*) as c, SUM(CASE WHEN is_viewed = 0 THEN 1 ELSE 0 END) as unseen FROM orders GROUP BY status");
+while ($sc_row = $sc_q->fetch_assoc()) {
+    $status_counts[$sc_row['status']] = (int)$sc_row['c'];
+    $unseen_counts[$sc_row['status']] = (int)$sc_row['unseen'];
+}
+$status_counts['All'] = array_sum($status_counts);
+$unseen_counts['All'] = array_sum($unseen_counts);
 
-$po = $conn->query("SELECT COUNT(*) as c FROM orders WHERE status='Pending'");
-if ($po) $pending_orders = $po->fetch_assoc()['c'];
+$completed_orders = $status_counts['Completed'] ?? 0;
+$pending_orders   = $status_counts['Pending'] ?? 0;
 
 $ti = $conn->query("SELECT p.name, SUM(oi.quantity) as total_qty FROM order_items oi JOIN products p ON oi.product_id = p.id GROUP BY oi.product_id ORDER BY total_qty DESC LIMIT 1");
 if ($ti && $row = $ti->fetch_assoc()) $top_item = $row['name'];
@@ -401,7 +376,8 @@ $status_colors = [
         [$type, $msg] = explode(':', $action_msg, 2);
       ?>
         <div class="alert alert-<?= $type === 'success' ? 'success' : 'error' ?>">
-          <?= $type === 'success' ? '✓' : '✕' ?> <?= htmlspecialchars($msg) ?>
+          <span style="font-size:1.1rem;"><?= $type === 'success' ? '✅' : '❌' ?></span>
+          <div><?= $msg ?></div>
         </div>
       <?php endif; ?>
 
@@ -439,7 +415,7 @@ $status_colors = [
         </div>
 
         <div class="dashboard-grid">
-          <!-- Left column: chart + pending orders -->
+          <!-- Left column: Recent Orders + pending orders -->
           <div>
             <!-- Recent Orders -->
             <div class="card" style="margin-top:24px;">
@@ -569,6 +545,43 @@ $status_colors = [
           </div>
         </div>
 
+        <!-- Store Status (bottom of dashboard) -->
+        <?php
+          $site_st2 = $conn->query("SELECT * FROM site_settings");
+          $settings2 = [];
+          if ($site_st2) while($r2 = $site_st2->fetch_assoc()) $settings2[$r2['setting_key']] = $r2['setting_value'];
+          $is_online2 = ($settings2['store_status'] ?? 'online') === 'online';
+          $store_hours2 = $settings2['store_hours'] ?? 'Mon-Sun: 8:00 AM - 9:00 PM';
+        ?>
+        <div class="card" style="margin-top:24px;">
+          <div class="card-header">
+            Shop Status
+            <span style="font-size:0.68rem;font-weight:700;padding:2px 10px;border-radius:10px;<?= $is_online2 ? 'background:rgba(91,173,126,0.12);color:#5BAD7E;border:1px solid rgba(91,173,126,0.25);' : 'background:rgba(224,85,85,0.12);color:#E05555;border:1px solid rgba(224,85,85,0.25);' ?>">
+              <?= $is_online2 ? '🟢 Online' : '🔴 Closed' ?>
+            </span>
+          </div>
+          <div class="card-body" style="padding:20px;">
+            <form method="POST">
+              <div style="display:flex; gap:20px; align-items:flex-end; flex-wrap:wrap;">
+                <div>
+                  <div style="font-size:0.63rem; font-weight:700; letter-spacing:1.8px; text-transform:uppercase; color:var(--gold); margin-bottom:8px;">Status</div>
+                  <select name="store_status" style="padding:9px 12px; background:var(--panel); color:var(--cream); border:1px solid var(--border); border-radius:3px; outline:none;">
+                    <option value="online" <?= $is_online2 ? 'selected' : '' ?>>🟢 Online (Accepting Orders)</option>
+                    <option value="offline" <?= !$is_online2 ? 'selected' : '' ?>>🔴 Offline (Closed)</option>
+                  </select>
+                </div>
+                <div style="flex:1; min-width:220px;">
+                  <div style="font-size:0.63rem; font-weight:700; letter-spacing:1.8px; text-transform:uppercase; color:var(--gold); margin-bottom:8px;">Message</div>
+                  <input type="text" name="store_hours" value="<?= htmlspecialchars($store_hours2) ?>" placeholder="e.g. Mon-Sun: 8:00 AM – 9:00 PM" style="width:100%; padding:9px 12px; background:var(--panel); color:var(--cream); border:1px solid var(--border); border-radius:3px; outline:none;"/>
+                </div>
+                <div>
+                  <button type="submit" name="update_store_status" class="btn btn-gold btn-sm">Save Changes</button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+
       <!-- ══════════════════════════════════════════════════════════════════
            ORDERS
       ══════════════════════════════════════════════════════════════════════ -->
@@ -627,6 +640,12 @@ $status_colors = [
                     <span style="text-align:right;"><?= htmlspecialchars($order_detail['delivery_address']) ?></span>
                   </div>
                   <?php endif; ?>
+                  <?php if (!empty($order_detail['order_note'])): ?>
+                  <div style="margin-top:4px;padding:10px 12px;background:rgba(212,175,90,0.06);border:1px solid rgba(212,175,90,0.18);border-radius:3px;">
+                    <div style="font-size:0.62rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--gold);opacity:0.7;margin-bottom:5px;">Order Note</div>
+                    <div style="font-size:0.83rem;color:var(--cream);line-height:1.5;"><?= nl2br(htmlspecialchars($order_detail['order_note'])) ?></div>
+                  </div>
+                  <?php endif; ?>
                   <?php if ($order_detail['voucher_code']): ?>
                   <div style="display:flex;justify-content:space-between;">
                     <span style="color:var(--muted);">Voucher</span>
@@ -640,7 +659,13 @@ $status_colors = [
                   <form method="POST" style="display:flex;gap:10px;align-items:center;">
                     <input type="hidden" name="order_id" value="<?= $order_detail['id'] ?>"/>
                     <select name="new_status" style="flex:1;background:var(--panel);border:1px solid var(--border);border-radius:2px;padding:9px 12px;color:var(--cream);font-family:'DM Sans',sans-serif;font-size:0.83rem;outline:none;">
-                      <?php foreach (['Pending','Preparing','Ready','Out for Delivery','Completed','Cancelled'] as $st): ?>
+                      <?php 
+                        $st_list = ['Pending','Preparing','Ready','Completed','Cancelled'];
+                        if (($order_detail['fulfillment_type'] ?? 'pickup') === 'delivery') {
+                            array_splice($st_list, 3, 0, 'Out for Delivery');
+                        }
+                        foreach ($st_list as $st): 
+                      ?>
                         <option value="<?= $st ?>" <?= $order_detail['status']===$st?'selected':'' ?>><?= $st ?></option>
                       <?php endforeach; ?>
                     </select>
@@ -668,13 +693,19 @@ $status_colors = [
           </div>
 
           <!-- Filter tabs -->
-          <div class="tab-nav" id="orders-tab-nav">
+          <div class="tab-nav" id="orders-tab-nav" style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:20px;">
             <?php
-              $order_tabs = ['All','Pending','Preparing','Ready','Out for Delivery','Completed','Cancelled'];
-              $active_tab = $_GET['filter'] ?? 'All';
+              $order_tabs = ['Pending','Preparing','Ready','Out for Delivery','Completed','Cancelled','All'];
+              $active_tab = $_GET['filter'] ?? 'Pending';
             ?>
             <?php foreach ($order_tabs as $ot): ?>
-              <a href="admin.php?s=orders&filter=<?= urlencode($ot) ?>" class="tab-btn <?= $active_tab===$ot?'active':'' ?>"><?= $ot ?></a>
+              <?php $c = $unseen_counts[$ot] ?? 0; ?>
+              <a href="admin.php?s=orders&filter=<?= urlencode($ot) ?>" class="tab-btn <?= $active_tab===$ot?'active':'' ?>" style="display:inline-flex;align-items:center;">
+                <?= $ot ?>
+                <?php if ($c > 0): ?>
+                  <span style="display:inline-flex;align-items:center;justify-content:center;background:var(--error);color:#fff;border-radius:10px;font-size:0.6rem;font-weight:700;height:16px;min-width:16px;padding:0 4px;margin-left:6px;"><?= $c ?></span>
+                <?php endif; ?>
+              </a>
             <?php endforeach; ?>
           </div>
 
@@ -695,7 +726,7 @@ $status_colors = [
                 <tbody>
                 <?php
                   // Re-query with filter
-                  $filter_status = $_GET['filter'] ?? 'All';
+                  $filter_status = $_GET['filter'] ?? 'Pending';
                   if ($filter_status === 'All') {
                       $olist = $conn->query("SELECT o.*, u.first_name, u.last_name FROM orders o JOIN users u ON o.user_id = u.id ORDER BY o.created_at DESC LIMIT 100");
                   } else {
@@ -772,7 +803,6 @@ $status_colors = [
         <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:24px;">
           <div>
             <div class="section-title">Inventory</div>
-            <div class="section-sub" style="margin-bottom:0;">Supplies (cups, lids, straws) and pastry stock. Auto-deducts when orders are accepted.</div>
           </div>
           <button class="btn btn-gold btn-md" onclick="openModal('add-inv-modal')">+ Add Item</button>
         </div>

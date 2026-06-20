@@ -4,10 +4,21 @@ require_once 'includes/db.php';
 
 $page_title = 'Cart — Overdose Cafe';
 
+// Fetch store settings
+$st_q = $conn->query("SELECT * FROM site_settings");
+$store_settings = [];
+if ($st_q) while($r = $st_q->fetch_assoc()) $store_settings[$r['setting_key']] = $r['setting_value'];
+$is_online = ($store_settings['store_status'] ?? 'online') === 'online';
+
 if (!isset($_SESSION['user_id'])) { header("Location: login.php"); exit(); }
 
 $msg = '';
 $error = '';
+
+// Show success message when redirected from promo popup "Order Now"
+if (!empty($_GET['added'])) {
+    $msg = 'Item added to cart successfully!';
+}
 
 // Remove item
 if (isset($_GET['remove'])) {
@@ -41,6 +52,7 @@ $registered_address = $user_row['address'] ?? '';
 // Restore fulfillment from session; default delivery address to registered one
 $fulfillment   = $_SESSION['fulfillment_type'] ?? 'pickup';
 $delivery_addr = $_SESSION['delivery_address'] ?? $registered_address;
+$order_note    = $_SESSION['order_note'] ?? '';
 
 // Save fulfillment choice
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_fulfillment'])) {
@@ -53,6 +65,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_fulfillment'])) 
     }
     $_SESSION['fulfillment_type']  = $fulfillment;
     $_SESSION['delivery_address']  = $delivery_addr;
+    $_SESSION['order_note']        = trim($_POST['order_note'] ?? '');
+    $order_note = $_SESSION['order_note'];
     header("Location: cart.php");
     exit();
 }
@@ -103,7 +117,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['apply_voucher'])) {
 
 // Place order
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
-    if (empty($_SESSION['cart'])) {
+    if (!$is_online) {
+        $error = 'The store is currently closed. We are not accepting orders at this time.';
+    } elseif (empty($_SESSION['cart'])) {
         $error = 'Your cart is empty.';
     } else {
         $ft = $_SESSION['fulfillment_type'] ?? 'pickup';
@@ -115,18 +131,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
             foreach ($_SESSION['cart'] as $item) {
                 $sub += $item['price'] * $item['qty'];
             }
-            $disc = $_SESSION['voucher_discount'] ?? 0;
-            $dfee = ($ft === 'delivery') ? 50.00 : 0.00;
+            $disc  = $_SESSION['voucher_discount'] ?? 0;
+            $dfee  = ($ft === 'delivery') ? 50.00 : 0.00;
             $total = $sub - $disc + $dfee;
             $vcode = $_SESSION['voucher_code'] ?? null;
-            $uid = $_SESSION['user_id'];
+            $uid   = $_SESSION['user_id'];
+            $note  = trim($_POST['order_note'] ?? $_SESSION['order_note'] ?? '');
 
-            // Add fulfillment columns if they don't exist yet
-            $conn->query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS fulfillment_type VARCHAR(10) DEFAULT 'pickup'");
-            $conn->query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_address TEXT DEFAULT NULL");
-
-            $stmt = $conn->prepare("INSERT INTO orders (user_id, total_amount, discount, voucher_code, fulfillment_type, delivery_address, status) VALUES (?, ?, ?, ?, ?, ?, 'Pending')");
-            $stmt->bind_param("iddsss", $uid, $total, $disc, $vcode, $ft, $da);
+            $stmt = $conn->prepare("INSERT INTO orders (user_id, total_amount, discount, voucher_code, fulfillment_type, delivery_address, order_note, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'Pending')");
+            $stmt->bind_param("iddssss", $uid, $total, $disc, $vcode, $ft, $da, $note);
             $stmt->execute();
             $order_id = $conn->insert_id;
 
@@ -136,9 +149,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
                 $istmt->execute();
             }
 
-            // Clear cart, voucher, and fulfillment
+            // Clear cart, voucher, fulfillment, and note
             unset($_SESSION['cart'], $_SESSION['voucher_code'], $_SESSION['voucher_discount'],
-                  $_SESSION['fulfillment_type'], $_SESSION['delivery_address']);
+                  $_SESSION['fulfillment_type'], $_SESSION['delivery_address'], $_SESSION['order_note']);
             header("Location: orders.php?placed=" . $order_id);
             exit();
         }
@@ -184,6 +197,9 @@ require_once 'includes/header.php';
     <h1 class="page-title">Your Cart</h1>
     <p class="page-subtitle">Review your items before placing your order.</p>
 
+    <?php if ($msg): ?>
+      <div class="alert alert-success">✅ <?= htmlspecialchars($msg) ?></div>
+    <?php endif; ?>
     <?php if ($error): ?>
       <div class="alert alert-error"><?= htmlspecialchars($error) ?></div>
     <?php endif; ?>
@@ -292,6 +308,22 @@ require_once 'includes/header.php';
               <?php endif; ?>
               <input type="hidden" name="save_fulfillment" value="1"/>
             </form>
+
+            <!-- Order Note (shown for both pickup and delivery, below address) -->
+            <div style="margin-top:16px; padding-top:16px; border-top:1px solid var(--border-light, rgba(255,255,255,0.07));">
+              <label style="display:block; font-size:0.7rem; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; color:var(--gold); opacity:0.8; margin-bottom:8px;">Order Note <span style="font-weight:400; opacity:0.55; text-transform:none; letter-spacing:0;">(optional)</span></label>
+              <form method="POST">
+                <textarea name="order_note" rows="3" placeholder="e.g. Less ice, extra syrup, no sugar..." style="width:100%; background:var(--bg); border:1px solid var(--border); border-radius:3px; padding:10px 12px; color:var(--cream); font-family:'DM Sans',sans-serif; font-size:0.84rem; line-height:1.55; resize:vertical; outline:none; transition:border-color 0.2s;" onfocus="this.style.borderColor='rgba(212,175,90,0.5)'" onblur="this.style.borderColor='var(--border)'"><?= htmlspecialchars($order_note) ?></textarea>
+                <input type="hidden" name="save_fulfillment" value="1"/>
+                <input type="hidden" name="fulfillment_type" value="<?= htmlspecialchars($fulfillment) ?>"/>
+                <input type="hidden" name="delivery_address" value="<?= htmlspecialchars($delivery_addr) ?>"/>
+                <button type="submit" class="btn-gold" style="margin-top:9px; font-size:0.72rem; padding:8px 18px;">Save Note</button>
+              </form>
+              <?php if ($order_note): ?>
+                <p style="margin-top:8px; font-size:0.76rem; color:var(--muted); font-style:italic;">📝 Note saved: "<?= htmlspecialchars($order_note) ?>"</p>
+              <?php endif; ?>
+            </div>
+
             <?php if ($fulfillment === 'pickup'): ?>
               <p class="pickup-note">📍 Overdose Cafe - 32nd Street, 7th Avenue, Manila, 1630</p>
             <?php endif; ?>
@@ -412,9 +444,15 @@ require_once 'includes/header.php';
             <span>₱<?= number_format($total, 2) ?></span>
           </div>
           <form method="POST" style="margin-top:20px;">
-            <button type="submit" name="place_order" class="btn-gold" style="width:100%;justify-content:center;padding:14px;">
-              Place Order
-            </button>
+            <?php if (!$is_online): ?>
+              <button type="button" disabled style="width:100%;justify-content:center;padding:14px;background:#333;color:#888;border:1px solid #444;border-radius:3px;font-family:'DM Sans',sans-serif;font-weight:700;font-size:0.75rem;letter-spacing:2px;text-transform:uppercase;cursor:not-allowed;">
+                Store Closed
+              </button>
+            <?php else: ?>
+              <button type="submit" name="place_order" class="btn-gold" style="width:100%;justify-content:center;padding:14px;">
+                Place Order
+              </button>
+            <?php endif; ?>
           </form>
           <a href="products.php" class="btn-outline" style="width:100%;justify-content:center;padding:13px;margin-top:10px;">
             Continue Shopping

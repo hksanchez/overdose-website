@@ -2,26 +2,6 @@
 session_start();
 require_once 'includes/db.php';
 
-// ── ENSURE rider_users TABLE EXISTS ─────────────────────────────────────────
-$conn->query("CREATE TABLE IF NOT EXISTS rider_users (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    username VARCHAR(50) NOT NULL UNIQUE,
-    password VARCHAR(255) NOT NULL,
-    full_name VARCHAR(100) NOT NULL,
-    is_active TINYINT(1) DEFAULT 1,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-)");
-
-// Seed default rider if none
-$chkR = $conn->query("SELECT COUNT(*) as c FROM rider_users");
-if ($chkR->fetch_assoc()['c'] == 0) {
-    $pw = password_hash('rider123', PASSWORD_DEFAULT);
-    $s  = $conn->prepare("INSERT INTO rider_users (username, password, full_name) VALUES (?,?,?)");
-    $u  = 'rider'; $n = 'Rider';
-    $s->bind_param("sss", $u, $pw, $n);
-    $s->execute();
-}
-
 // ── AUTH GUARD — rider session only ─────────────────────────────────────────
 if (!isset($_SESSION['rider_id'])) {
     header("Location: admin_login.php");
@@ -30,18 +10,13 @@ if (!isset($_SESSION['rider_id'])) {
 
 // ── LOGOUT ──────────────────────────────────────────────────────────────────
 if (isset($_GET['rider_logout'])) {
-    session_unset();
-    session_destroy();
+    unset($_SESSION['rider_id'], $_SESSION['rider_name'], $_SESSION['rider_user']);
     header("Location: admin_login.php");
     exit();
 }
 
 $rider_name = $_SESSION['rider_name'] ?? 'Rider';
 $rider_user = $_SESSION['rider_user'] ?? 'rider';
-
-// ── ENSURE COLUMNS EXIST ────────────────────────────────────────────────────
-$conn->query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS fulfillment_type VARCHAR(10) DEFAULT 'pickup'");
-$conn->query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_address TEXT DEFAULT NULL");
 
 $action_msg = '';
 
@@ -53,11 +28,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // ── Mark Delivered (Out for Delivery → Completed) ──────────────────────
     if (isset($_POST['mark_delivered'])) {
         $oid = (int)$_POST['order_id'];
-        $upd = $conn->prepare("UPDATE orders SET status='Completed' WHERE id=? AND status='Out for Delivery'");
+        $upd = $conn->prepare("UPDATE orders SET status='Completed', is_viewed=0 WHERE id=? AND status='Out for Delivery'");
         $upd->bind_param("i", $oid);
         $upd->execute();
         if ($upd->affected_rows > 0) {
-            $action_msg = 'success:Order #' . $oid . ' marked as Delivered!';
+            $action_msg = 'success:<a href="rider.php?s=history">Order #' . $oid . ' marked as Delivered!</a>';
         } else {
             $action_msg = 'error:Could not update order. It may no longer be Out for Delivery.';
         }
@@ -125,6 +100,11 @@ $status_colors = [
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <?php if (isset($_GET['s']) && $_GET['s'] === 'deliveries'): ?>
+  <meta http-equiv="refresh" content="30">
+  <?php elseif (!isset($_GET['s']) || $_GET['s'] === 'dashboard'): ?>
+  <meta http-equiv="refresh" content="60">
+  <?php endif; ?>
   <title>Rider Portal — Overdose Cafe</title>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,700&family=DM+Sans:wght@300;400;500;600&display=swap"/>
   <link rel="stylesheet" href="assets/admin.css">
@@ -340,7 +320,8 @@ $status_colors = [
         [$type, $msg] = explode(':', $action_msg, 2);
       ?>
         <div class="alert alert-<?= $type === 'success' ? 'success' : 'error' ?>">
-          <?= $type === 'success' ? '✓' : '✕' ?> <?= htmlspecialchars($msg) ?>
+          <span style="font-size:1.1rem;"><?= $type === 'success' ? '✅' : '❌' ?></span>
+          <div><?= $msg ?></div>
         </div>
       <?php endif; ?>
 
@@ -380,7 +361,7 @@ $status_colors = [
               <div class="card-header">
                 Out for Delivery
                 <?php if ($out_for_delivery > 0): ?>
-                  <span style="font-size:0.65rem;background:rgba(155,123,212,0.12);color:#9B7BD4;border:1px solid rgba(155,123,212,0.25);border-radius:10px;padding:2px 8px;"><?= $out_for_delivery ?> en route</span>
+                  <span style="margin-left:8px;font-size:0.65rem;background:rgba(155,123,212,0.12);color:#9B7BD4;border:1px solid rgba(155,123,212,0.25);border-radius:10px;padding:2px 8px;"><?= $out_for_delivery ?> en route</span>
                 <?php endif; ?>
                 <a href="rider.php?s=deliveries" class="btn btn-ghost btn-sm" style="margin-left:auto;">View All →</a>
               </div>
@@ -411,11 +392,7 @@ $status_colors = [
                           <?php endif; ?>
                         </div>
                         <div class="delivery-card-actions">
-                          <form method="POST" style="display:inline;">
-                            <input type="hidden" name="order_id" value="<?= $a['id'] ?>"/>
-                            <button type="submit" name="mark_delivered" class="btn btn-success btn-sm">✓ Delivered</button>
-                          </form>
-                          <a href="rider.php?s=deliveries&order_id=<?= $a['id'] ?>" class="btn btn-ghost btn-sm">View</a>
+                          <a href="rider.php?s=deliveries&order_id=<?= $a['id'] ?>" class="btn btn-gold btn-sm" style="padding:8px 18px;font-size:0.78rem;letter-spacing:0.5px;">View Order →</a>
                         </div>
                       </div>
                     <?php endforeach; ?>
@@ -544,6 +521,12 @@ $status_colors = [
                     </div>
                   </div>
                   <?php endif; ?>
+                  <?php if (!empty($order_detail['order_note'])): ?>
+                  <div style="margin-top:4px;padding:10px 12px;background:rgba(212,175,90,0.06);border:1px solid rgba(212,175,90,0.18);border-radius:3px;">
+                    <div style="font-size:0.62rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--gold);opacity:0.7;margin-bottom:5px;">Order Note</div>
+                    <div style="font-size:0.83rem;color:var(--cream);line-height:1.5;"><?= nl2br(htmlspecialchars($order_detail['order_note'])) ?></div>
+                  </div>
+                  <?php endif; ?>
                   <div style="display:flex;justify-content:space-between;">
                     <span style="color:var(--muted);">Status</span>
                     <?php $sc = $status_colors[$order_detail['status']] ?? '#888'; ?>
@@ -624,12 +607,8 @@ $status_colors = [
                       <span class="status-pill" style="color:<?= $sc ?>;border-color:<?= $sc ?>33;background:<?= $sc ?>15;"><?= $ord['status'] ?></span>
                     </td>
                     <td style="color:var(--muted);font-size:0.78rem;white-space:nowrap;"><?= date('M d, g:i A', strtotime($ord['created_at'])) ?></td>
-                    <td style="display:flex;gap:6px;flex-wrap:wrap;">
-                      <form method="POST" style="display:inline;">
-                        <input type="hidden" name="order_id" value="<?= $ord['id'] ?>"/>
-                        <button type="submit" name="mark_delivered" class="btn btn-success btn-sm">✓ Delivered</button>
-                      </form>
-                      <a href="rider.php?s=deliveries&order_id=<?= $ord['id'] ?>" class="btn btn-ghost btn-sm">View</a>
+                    <td>
+                      <a href="rider.php?s=deliveries&order_id=<?= $ord['id'] ?>" class="btn btn-gold btn-sm" style="padding:8px 18px;font-size:0.78rem;letter-spacing:0.5px;">View Order →</a>
                     </td>
                   </tr>
                 <?php endwhile; ?>
@@ -722,6 +701,12 @@ $status_colors = [
                     <div style="background:rgba(91,173,126,0.06);border:1px solid rgba(91,173,126,0.18);border-radius:3px;padding:10px 12px;font-size:0.82rem;line-height:1.5;">
                       📍 <?= htmlspecialchars($order_detail['delivery_address']) ?>
                     </div>
+                  </div>
+                  <?php endif; ?>
+                  <?php if (!empty($order_detail['order_note'])): ?>
+                  <div style="margin-top:4px;padding:10px 12px;background:rgba(212,175,90,0.06);border:1px solid rgba(212,175,90,0.18);border-radius:3px;">
+                    <div style="font-size:0.62rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--gold);opacity:0.7;margin-bottom:5px;">Order Note</div>
+                    <div style="font-size:0.83rem;color:var(--cream);line-height:1.5;"><?= nl2br(htmlspecialchars($order_detail['order_note'])) ?></div>
                   </div>
                   <?php endif; ?>
                   <div style="display:flex;justify-content:space-between;">

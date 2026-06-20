@@ -11,7 +11,7 @@ $placed = isset($_GET['placed']) ? (int)$_GET['placed'] : 0;
 // Cancel order (only Pending orders)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cancel_order'])) {
     $oid = (int)$_POST['order_id'];
-    $stmt = $conn->prepare("UPDATE orders SET status = 'Cancelled' WHERE id = ? AND user_id = ? AND status = 'Pending'");
+    $stmt = $conn->prepare("UPDATE orders SET status = 'Cancelled', is_viewed = 0 WHERE id = ? AND user_id = ? AND status = 'Pending'");
     $stmt->bind_param("ii", $oid, $uid);
     $stmt->execute();
     header("Location: orders.php?cancelled=" . $oid);
@@ -227,7 +227,7 @@ $status_colors = [
               <div class="status-info-icon">🏪</div>
               <div>
                 <div class="status-info-title" style="color:var(--success);">Ready for Pick Up</div>
-                <div class="status-info-desc">Your order is ready! Please pick it up at the store.</div>
+                <div class="status-info-desc">Your order is ready! Please claim it at the our shop.</div>
               </div>
             </div>
           <?php elseif ($status === 'Completed'): ?>
@@ -267,6 +267,15 @@ $status_colors = [
             <?php else: ?>
               <span class="fulfillment-badge-detail badge-pickup-detail">🏪 Pick Up</span>
               <p style="font-size:0.75rem;color:var(--muted);margin-top:6px;">📍 Overdose Cafe - 32nd Street, 7th Avenue, Manila, 1630</p>
+            <?php endif; ?>
+            
+            <?php if (!empty($detail_order['order_note'])): ?>
+              <div style="margin-top:16px;">
+                <p style="font-size:0.72rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--gold);margin-bottom:4px;">Order Note</p>
+                <div style="font-size:0.83rem;color:var(--cream);line-height:1.5;background:rgba(212,175,90,0.06);border:1px solid rgba(212,175,90,0.18);border-radius:3px;padding:10px 12px;">
+                  <?= nl2br(htmlspecialchars($detail_order['order_note'])) ?>
+                </div>
+              </div>
             <?php endif; ?>
           </div>
         </div>

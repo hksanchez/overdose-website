@@ -10,19 +10,13 @@ if (!isset($_SESSION['staff_id'])) {
 
 // ── LOGOUT ──────────────────────────────────────────────────────────────────
 if (isset($_GET['staff_logout'])) {
-    session_unset();
-    session_destroy();
+    unset($_SESSION['staff_id'], $_SESSION['staff_name'], $_SESSION['staff_user']);
     header("Location: admin_login.php");
     exit();
 }
 
 $staff_name = $_SESSION['staff_name'] ?? 'Staff';
 $staff_user = $_SESSION['staff_user'] ?? 'staff';
-
-// ── ENSURE COLUMNS EXIST ────────────────────────────────────────────────────
-$conn->query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS fulfillment_type VARCHAR(10) DEFAULT 'pickup'");
-$conn->query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_address TEXT DEFAULT NULL");
-$conn->query("ALTER TABLE inventory ADD COLUMN IF NOT EXISTS linked_product_id INT DEFAULT NULL");
 
 $action_msg = '';
 
@@ -48,22 +42,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $conn->query("UPDATE inventory SET quantity = GREATEST(0, quantity - $qty) WHERE linked_product_id = $pid");
             }
         }
-        $upd = $conn->prepare("UPDATE orders SET status='Preparing' WHERE id=? AND status='Pending'");
+        $upd = $conn->prepare("UPDATE orders SET status='Preparing', is_viewed=0 WHERE id=? AND status='Pending'");
         $upd->bind_param("i", $oid);
         $upd->execute();
-        $action_msg = 'success:Order #' . $oid . ' accepted — now Preparing.';
+        $action_msg = 'success:<a href="staff.php?s=orders&filter=Preparing">Order #' . $oid . ' accepted — now Preparing.</a>';
     }
 
-    // ── Update Order Status ─────────────────────────────────────────────────
+    // ── Quick-action: Preparing → Ready (pickup) ────────────────────────────────
+    if (isset($_POST['move_to_ready'])) {
+        $oid = (int)$_POST['order_id'];
+        $upd = $conn->prepare("UPDATE orders SET status='Ready', is_viewed=0 WHERE id=? AND status='Preparing' AND fulfillment_type='pickup'");
+        $upd->bind_param("i", $oid);
+        $upd->execute();
+        $action_msg = 'success:<a href="staff.php?s=orders&filter=Ready">Order #' . $oid . ' is now Ready for pick-up.</a>';
+    }
+
+    // ── Quick-action: Preparing → Out for Delivery (delivery) ──────────────────
+    if (isset($_POST['move_to_delivery'])) {
+        $oid = (int)$_POST['order_id'];
+        $upd = $conn->prepare("UPDATE orders SET status='Out for Delivery', is_viewed=0 WHERE id=? AND status='Preparing' AND fulfillment_type='delivery'");
+        $upd->bind_param("i", $oid);
+        $upd->execute();
+        $action_msg = 'success:<a href="staff.php?s=orders&filter=Out+for+Delivery">Order #' . $oid . ' is Out for Delivery.</a>';
+    }
+
+    // ── Quick-action: Ready → Completed (pickup only, delivery handled by rider) ─
+    if (isset($_POST['mark_completed'])) {
+        $oid = (int)$_POST['order_id'];
+        $upd = $conn->prepare("UPDATE orders SET status='Completed', is_viewed=0 WHERE id=? AND status='Ready'");
+        $upd->bind_param("i", $oid);
+        $upd->execute();
+        $action_msg = 'success:<a href="staff.php?s=orders&filter=Completed">Order #' . $oid . ' marked as Completed.</a>';
+    }
+
+    // ── Update Order Status (manual override) ───────────────────────────────
     if (isset($_POST['update_order_status'])) {
         $oid    = (int)$_POST['order_id'];
         $status = $_POST['new_status'];
         $allowed = ['Pending','Preparing','Ready','Out for Delivery','Completed','Cancelled'];
         if (in_array($status, $allowed)) {
-            $upd = $conn->prepare("UPDATE orders SET status=? WHERE id=?");
+            $upd = $conn->prepare("UPDATE orders SET status=?, is_viewed=0 WHERE id=?");
             $upd->bind_param("si", $status, $oid);
             $upd->execute();
-            $action_msg = 'success:Order #' . $oid . ' → ' . $status . '.';
+            $action_msg = 'success:<a href="staff.php?s=orders&filter=' . urlencode($status) . '">Order #' . $oid . ' → ' . htmlspecialchars($status) . '.</a>';
         }
     }
 
@@ -99,20 +120,32 @@ if (!in_array($section, $allowed_sections)) {
     $section = 'dashboard';
 }
 
+// Mark orders as viewed if we are on a specific filter tab
+if ($section === 'orders') {
+    $current_filter = $_GET['filter'] ?? 'Pending';
+    if ($current_filter !== 'All') {
+        $fs_esc = $conn->real_escape_string($current_filter);
+        $conn->query("UPDATE orders SET is_viewed = 1 WHERE status = '$fs_esc' AND is_viewed = 0");
+    }
+}
+
 // Dashboard stats — no sales figures or top-selling item for staff
 $completed_orders = 0; $pending_orders = 0; $preparing_orders = 0; $ready_orders = 0;
 
-$co = $conn->query("SELECT COUNT(*) as c FROM orders WHERE status='Completed'");
-if ($co) $completed_orders = $co->fetch_assoc()['c'];
+$status_counts = [];
+$unseen_counts = [];
+$sc_q = $conn->query("SELECT status, COUNT(*) as c, SUM(CASE WHEN is_viewed = 0 THEN 1 ELSE 0 END) as unseen FROM orders GROUP BY status");
+while ($sc_row = $sc_q->fetch_assoc()) {
+    $status_counts[$sc_row['status']] = (int)$sc_row['c'];
+    $unseen_counts[$sc_row['status']] = (int)$sc_row['unseen'];
+}
+$status_counts['All'] = array_sum($status_counts);
+$unseen_counts['All'] = array_sum($unseen_counts);
 
-$po = $conn->query("SELECT COUNT(*) as c FROM orders WHERE status='Pending'");
-if ($po) $pending_orders = $po->fetch_assoc()['c'];
-
-$prq = $conn->query("SELECT COUNT(*) as c FROM orders WHERE status='Preparing'");
-if ($prq) $preparing_orders = $prq->fetch_assoc()['c'];
-
-$rq = $conn->query("SELECT COUNT(*) as c FROM orders WHERE status='Ready' OR status='Out for Delivery'");
-if ($rq) $ready_orders = $rq->fetch_assoc()['c'];
+$completed_orders = $status_counts['Completed'] ?? 0;
+$pending_orders   = $status_counts['Pending'] ?? 0;
+$preparing_orders = $status_counts['Preparing'] ?? 0;
+$ready_orders     = ($status_counts['Ready'] ?? 0) + ($status_counts['Out for Delivery'] ?? 0);
 
 // Inventory alerts (low stock)
 $inv_alerts = $conn->query("SELECT * FROM inventory WHERE quantity <= low_stock_threshold ORDER BY (quantity/low_stock_threshold) ASC");
@@ -302,7 +335,8 @@ $status_colors = [
         [$type, $msg] = explode(':', $action_msg, 2);
       ?>
         <div class="alert alert-<?= $type === 'success' ? 'success' : 'error' ?>">
-          <?= $type === 'success' ? '✓' : '✕' ?> <?= htmlspecialchars($msg) ?>
+          <span style="font-size:1.1rem;"><?= $type === 'success' ? '✅' : '❌' ?></span>
+          <div><?= $msg ?></div>
         </div>
       <?php endif; ?>
 
@@ -311,7 +345,7 @@ $status_colors = [
       ══════════════════════════════════════════════════════════════════════ -->
       <?php if ($section === 'dashboard'): ?>
 
-        <!-- Stat cards (no sales figures or top-selling item) -->
+        <!-- Stat cards -->
         <div class="grid-4">
           <div class="stat-card">
             <div class="stat-label">Pending</div>
@@ -340,16 +374,11 @@ $status_colors = [
         </div>
 
         <div class="dashboard-grid">
-          <!-- Left column -->
           <div>
-
-            <!-- Pending Orders — quick action -->
+            <!-- Pending Orders -->
             <div class="card" style="margin-top:24px;">
               <div class="card-header">
                 Pending Orders
-                <?php if ($pending_orders > 0): ?>
-                  <span style="font-size:0.65rem;background:rgba(212,175,90,0.12);color:var(--gold);border:1px solid rgba(212,175,90,0.25);border-radius:10px;padding:2px 8px;"><?= $pending_orders ?> waiting</span>
-                <?php endif; ?>
                 <a href="staff.php?s=orders&filter=Pending" class="btn btn-ghost btn-sm" style="margin-left:auto;">View All →</a>
               </div>
               <div class="card-body" style="padding:12px 20px;">
@@ -410,7 +439,7 @@ $status_colors = [
                       <?php foreach ($ro_rows as $ro):
                         $sc = $status_colors[$ro['status']] ?? '#888';
                       ?>
-                        <tr style="border-bottom:1px solid var(--border);transition:background 0.15s;" onmouseover="this.style.background='rgba(255,255,255,0.03)'" onmouseout="this.style.background=''">
+                        <tr style="border-bottom:1px solid var(--border);">
                           <td style="padding:10px 20px;">
                             <a href="staff.php?s=orders&order_id=<?= $ro['id'] ?>" style="color:var(--gold);font-weight:600;text-decoration:none;">#<?= $ro['id'] ?></a>
                           </td>
@@ -427,46 +456,13 @@ $status_colors = [
                 <?php endif; ?>
               </div>
             </div>
-
           </div>
 
-          <!-- Right column: completed + inventory alerts -->
+          <!-- Right column: inventory alerts -->
           <div>
-
-            <!-- Completed Orders -->
             <div class="card" style="margin-top:24px;">
               <div class="card-header">
-                Completed Orders
-                <a href="staff.php?s=orders&filter=Completed" class="btn btn-ghost btn-sm">View All →</a>
-              </div>
-              <div class="card-body" style="padding:0 20px;">
-                <?php
-                  $rc_rows = [];
-                  if ($recent_completed) while ($rc = $recent_completed->fetch_assoc()) $rc_rows[] = $rc;
-                ?>
-                <?php if (empty($rc_rows)): ?>
-                  <p style="color:var(--muted);font-size:0.82rem;padding:12px 0;">No completed orders yet.</p>
-                <?php else: ?>
-                  <?php foreach ($rc_rows as $rc): ?>
-                    <div class="pending-order-row">
-                      <div style="flex:1;">
-                        <div class="pending-order-num">Order #<?= $rc['id'] ?></div>
-                        <div class="pending-order-meta"><?= htmlspecialchars($rc['first_name'] . ' ' . $rc['last_name']) ?> · ₱<?= number_format($rc['total_amount'],2) ?></div>
-                      </div>
-                      <span style="font-size:0.68rem;font-weight:700;color:#5BAD7E;background:rgba(91,173,126,0.1);border:1px solid rgba(91,173,126,0.25);border-radius:10px;padding:2px 9px;">Done</span>
-                    </div>
-                  <?php endforeach; ?>
-                <?php endif; ?>
-              </div>
-            </div>
-
-            <!-- Inventory Alerts -->
-            <div class="card" style="margin-top:20px;">
-              <div class="card-header">
                 Inventory Alerts
-                <?php if ($low_count > 0): ?>
-                  <span style="font-size:0.65rem;background:rgba(224,85,85,0.15);color:var(--error);border:1px solid rgba(224,85,85,0.25);border-radius:10px;padding:2px 8px;"><?= $low_count ?> Low</span>
-                <?php endif; ?>
                 <a href="staff.php?s=inventory" class="btn btn-ghost btn-sm" style="margin-left:auto;">Manage →</a>
               </div>
               <div class="card-body" style="padding:0 20px;">
@@ -487,14 +483,12 @@ $status_colors = [
                       </div>
                       <div style="display:flex;align-items:center;gap:10px;">
                         <span style="font-size:0.62rem;font-weight:700;color:<?= $bar_c ?>;background:<?= $bar_c ?>18;border:1px solid <?= $bar_c ?>33;border-radius:10px;padding:2px 8px;"><?= $lvl ?></span>
-                        <button class="btn btn-outline btn-sm" onclick='openRestockModal(<?= $ia['id'] ?>, "<?= addslashes($ia['item_name']) ?>")'>Restock</button>
                       </div>
                     </div>
                   <?php endwhile; ?>
                 <?php endif; ?>
               </div>
             </div>
-
           </div>
         </div>
 
@@ -502,54 +496,20 @@ $status_colors = [
            ORDERS
       ══════════════════════════════════════════════════════════════════════ -->
       <?php elseif ($section === 'orders'): ?>
-
         <?php if ($order_detail): ?>
-
-          <!-- Order Detail View -->
-          <div style="margin-bottom:20px;">
-            <a href="staff.php?s=orders" style="font-size:0.80rem;color:var(--muted);text-decoration:none;">← Back to Orders</a>
-          </div>
-
+          <div style="margin-bottom:20px;"><a href="staff.php?s=orders" style="font-size:0.80rem;color:var(--muted);text-decoration:none;">← Back to Orders</a></div>
           <div style="display:grid;grid-template-columns:1fr 320px;gap:20px;align-items:start;">
-
-            <!-- Items card -->
             <div class="card">
-              <div class="card-header">
-                Order #<?= $order_detail['id'] ?> — Items
-                <?php $sc = $status_colors[$order_detail['status']] ?? '#888'; ?>
-                <span class="status-pill" style="color:<?= $sc ?>;border-color:<?= $sc ?>33;background:<?= $sc ?>15;"><?= $order_detail['status'] ?></span>
-              </div>
-              <div class="table-wrap">
-                <table class="data-table">
-                  <thead>
-                    <tr>
-                      <th>Item</th>
-                      <th>Category</th>
-                      <th>Qty</th>
-                      <th style="text-align:right;">Unit Price</th>
-                      <th style="text-align:right;">Subtotal</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <?php foreach ($order_detail_items as $oi): ?>
-                      <tr>
-                        <td style="font-weight:600;"><?= htmlspecialchars($oi['name']) ?></td>
-                        <td style="color:var(--muted);font-size:0.78rem;text-transform:capitalize;"><?= $oi['category'] ?></td>
-                        <td style="font-weight:700;color:var(--cream);"><?= $oi['quantity'] ?></td>
-                        <td style="text-align:right;color:var(--muted);">₱<?= number_format($oi['price'],2) ?></td>
-                        <td style="text-align:right;font-weight:700;color:var(--gold);">₱<?= number_format($oi['price'] * $oi['quantity'],2) ?></td>
-                      </tr>
-                    <?php endforeach; ?>
-                    <tr style="border-top:1px solid var(--border);">
-                      <td colspan="4" style="text-align:right;font-weight:600;color:var(--cream);padding-top:12px;">Total</td>
-                      <td style="text-align:right;font-weight:800;color:var(--gold);font-size:1rem;padding-top:12px;">₱<?= number_format($order_detail['total_amount'],2) ?></td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
+              <div class="card-header">Order #<?= $order_detail['id'] ?> — Items</div>
+              <table class="data-table">
+                <thead><tr><th>Item</th><th>Category</th><th>Qty</th><th style="text-align:right;">Subtotal</th></tr></thead>
+                <tbody>
+                  <?php foreach ($order_detail_items as $oi): ?>
+                    <tr><td><?= htmlspecialchars($oi['name']) ?></td><td><?= $oi['category'] ?></td><td><?= $oi['quantity'] ?></td><td style="text-align:right;">₱<?= number_format($oi['price'] * $oi['quantity'],2) ?></td></tr>
+                  <?php endforeach; ?>
+                </tbody>
+              </table>
             </div>
-
-            <!-- Order info + actions -->
             <div class="card">
               <div class="card-header">Order Details</div>
               <div class="card-body">
@@ -578,6 +538,12 @@ $status_colors = [
                     <span style="text-align:right;"><?= htmlspecialchars($order_detail['delivery_address']) ?></span>
                   </div>
                   <?php endif; ?>
+                  <?php if (!empty($order_detail['order_note'])): ?>
+                  <div style="margin-top:4px;padding:10px 12px;background:rgba(212,175,90,0.06);border:1px solid rgba(212,175,90,0.18);border-radius:3px;">
+                    <div style="font-size:0.62rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--gold);opacity:0.7;margin-bottom:5px;">Order Note</div>
+                    <div style="font-size:0.83rem;color:var(--cream);line-height:1.5;"><?= nl2br(htmlspecialchars($order_detail['order_note'])) ?></div>
+                  </div>
+                  <?php endif; ?>
                   <?php if (!empty($order_detail['voucher_code'])): ?>
                   <div style="display:flex;justify-content:space-between;">
                     <span style="color:var(--muted);">Voucher</span>
@@ -592,11 +558,17 @@ $status_colors = [
                 </div>
 
                 <div style="margin-top:20px;border-top:1px solid var(--border);padding-top:18px;">
-                  <div style="font-size:0.68rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--gold);opacity:0.7;margin-bottom:12px;">Update Status</div>
+                  <div style="font-size:0.68rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--gold);opacity:0.7;margin-bottom:12px;">Actions</div>
                   <form method="POST" style="display:flex;gap:10px;align-items:center;">
                     <input type="hidden" name="order_id" value="<?= $order_detail['id'] ?>"/>
                     <select name="new_status" style="flex:1;background:var(--panel);border:1px solid var(--border);border-radius:2px;padding:9px 12px;color:var(--cream);font-family:'DM Sans',sans-serif;font-size:0.83rem;outline:none;">
-                      <?php foreach (['Pending','Preparing','Ready','Out for Delivery','Completed','Cancelled'] as $st): ?>
+                      <?php 
+                        $st_list = ['Pending','Preparing','Ready','Completed','Cancelled'];
+                        if (($order_detail['fulfillment_type'] ?? 'pickup') === 'delivery') {
+                            array_splice($st_list, 3, 0, 'Out for Delivery');
+                        }
+                        foreach ($st_list as $st): 
+                      ?>
                         <option value="<?= $st ?>" <?= $order_detail['status']===$st?'selected':'' ?>><?= $st ?></option>
                       <?php endforeach; ?>
                     </select>
@@ -626,13 +598,19 @@ $status_colors = [
           </div>
 
           <!-- Filter tabs -->
-          <div class="tab-nav" id="orders-tab-nav">
+          <div class="tab-nav" id="orders-tab-nav" style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:20px;">
             <?php
-              $order_tabs  = ['All','Pending','Preparing','Ready','Out for Delivery','Completed','Cancelled'];
-              $active_tab  = $_GET['filter'] ?? 'All';
+              $order_tabs  = ['Pending','Preparing','Ready','Out for Delivery','Completed','Cancelled','All'];
+              $active_tab  = $_GET['filter'] ?? 'Pending';
             ?>
             <?php foreach ($order_tabs as $ot): ?>
-              <a href="staff.php?s=orders&filter=<?= urlencode($ot) ?>" class="tab-btn <?= $active_tab===$ot?'active':'' ?>"><?= $ot ?></a>
+              <?php $c = $unseen_counts[$ot] ?? 0; ?>
+              <a href="staff.php?s=orders&filter=<?= urlencode($ot) ?>" class="tab-btn <?= $active_tab===$ot?'active':'' ?>" style="display:inline-flex;align-items:center;">
+                <?= $ot ?>
+                <?php if ($c > 0): ?>
+                  <span style="display:inline-flex;align-items:center;justify-content:center;background:var(--error);color:#fff;border-radius:10px;font-size:0.6rem;font-weight:700;height:16px;min-width:16px;padding:0 4px;margin-left:6px;"><?= $c ?></span>
+                <?php endif; ?>
+              </a>
             <?php endforeach; ?>
           </div>
 
@@ -652,7 +630,7 @@ $status_colors = [
                 </thead>
                 <tbody>
                 <?php
-                  $filter_status = $_GET['filter'] ?? 'All';
+                  $filter_status = $_GET['filter'] ?? 'Pending';
                   if ($filter_status === 'All') {
                       $olist = $conn->query("SELECT o.*, u.first_name, u.last_name FROM orders o JOIN users u ON o.user_id = u.id ORDER BY FIELD(o.status,'Pending','Preparing','Ready','Out for Delivery','Completed','Cancelled'), o.created_at DESC LIMIT 100");
                   } else {
@@ -679,8 +657,27 @@ $status_colors = [
                           <input type="hidden" name="order_id" value="<?= $ord['id'] ?>"/>
                           <button type="submit" name="accept_order" class="btn btn-success btn-sm">✓ Accept</button>
                         </form>
+
+                      <?php elseif ($ord['status'] === 'Preparing'): ?>
+                        <?php if (($ord['fulfillment_type'] ?? 'pickup') === 'pickup'): ?>
+                          <form method="POST" style="display:inline;">
+                            <input type="hidden" name="order_id" value="<?= $ord['id'] ?>"/>
+                            <button type="submit" name="move_to_ready" class="btn btn-success btn-sm">🏪 Ready</button>
+                          </form>
+                        <?php else: ?>
+                          <form method="POST" style="display:inline;">
+                            <input type="hidden" name="order_id" value="<?= $ord['id'] ?>"/>
+                            <button type="submit" name="move_to_delivery" class="btn btn-gold btn-sm">🛵 Dispatch</button>
+                          </form>
+                        <?php endif; ?>
+
+                      <?php elseif ($ord['status'] === 'Ready'): ?>
+                        <form method="POST" style="display:inline;">
+                          <input type="hidden" name="order_id" value="<?= $ord['id'] ?>"/>
+                          <button type="submit" name="mark_completed" class="btn btn-success btn-sm">✅ Done</button>
+                        </form>
                       <?php endif; ?>
-                      <button class="btn btn-outline btn-sm" onclick="openStatusModal(<?= $ord['id'] ?>, '<?= addslashes($ord['status']) ?>')">Status</button>
+
                       <a href="staff.php?s=orders&order_id=<?= $ord['id'] ?>&filter=<?= urlencode($filter_status) ?>" class="btn btn-ghost btn-sm">View</a>
                     </td>
                   </tr>
