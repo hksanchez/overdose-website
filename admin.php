@@ -186,19 +186,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $ins  = $conn->prepare("INSERT INTO vouchers (code,discount_type,discount_value,min_order,is_active) VALUES (?,?,?,?,1)");
         $ins->bind_param("ssdd", $code, $type, $val, $min);
         if (!$ins->execute()) $action_msg = 'error:Voucher code already exists.';
-        else $action_msg = 'success:Voucher added.';
+        else $action_msg = 'success:Voucher <strong>' . htmlspecialchars($code) . '</strong> Voucher Added';
     }
 
     if (isset($_POST['toggle_voucher'])) {
         $vid = (int)$_POST['vid'];
+        // Get current state before toggle
+        $cv = $conn->query("SELECT code, is_active FROM vouchers WHERE id=$vid")->fetch_assoc();
         $conn->query("UPDATE vouchers SET is_active = NOT is_active WHERE id=$vid");
-        $action_msg = 'success:Voucher status toggled.';
+        if ($cv && $cv['is_active']) {
+            // Was active, now deactivated — customers with this voucher applied will have it removed automatically
+            $action_msg = 'success:Voucher <strong>' . htmlspecialchars($cv['code']) . '</strong> Voucher Deactivated.';
+        } else {
+            $action_msg = 'success:Voucher Activated.';
+        }
     }
 
     if (isset($_POST['delete_voucher'])) {
         $vid = (int)$_POST['vid'];
+        $cv = $conn->query("SELECT code FROM vouchers WHERE id=$vid")->fetch_assoc();
         $conn->query("DELETE FROM vouchers WHERE id=$vid");
-        $action_msg = 'success:Voucher deleted.';
+        $action_msg = 'success:Voucher <strong>' . htmlspecialchars($cv['code'] ?? '') . '</strong> Voucher Deleted.';
     }
 }
 

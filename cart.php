@@ -51,17 +51,15 @@ $registered_address = $user_row['address'] ?? '';
 
 // Restore fulfillment from session; default delivery address to registered one
 $fulfillment   = $_SESSION['fulfillment_type'] ?? 'pickup';
-$delivery_addr = $_SESSION['delivery_address'] ?? $registered_address;
+$delivery_addr = (!empty($_SESSION['delivery_address'])) ? $_SESSION['delivery_address'] : $registered_address;
 $order_note    = $_SESSION['order_note'] ?? '';
 
 // Save fulfillment choice
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_fulfillment'])) {
     $fulfillment = ($_POST['fulfillment_type'] === 'delivery') ? 'delivery' : 'pickup';
-    // reset_address button resets to registered address
-    if (isset($_POST['reset_address'])) {
-        $delivery_addr = $registered_address;
-    } else {
-        $delivery_addr = trim($_POST['delivery_address'] ?? $registered_address);
+    $delivery_addr = trim($_POST['delivery_address'] ?? '');
+    if ($delivery_addr === '') {
+        $delivery_addr = $_SESSION['delivery_address'] ?? $registered_address;
     }
     $_SESSION['fulfillment_type']  = $fulfillment;
     $_SESSION['delivery_address']  = $delivery_addr;
@@ -69,6 +67,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_fulfillment'])) 
     $order_note = $_SESSION['order_note'];
     header("Location: cart.php");
     exit();
+}
+
+// ── Re-validate any currently applied voucher on every page load ─────────────
+// This ensures that if admin deactivates/deletes a voucher, it's removed from
+// the customer's cart automatically on their next page view.
+if (!empty($_SESSION['voucher_code'])) {
+    $rv_code = $_SESSION['voucher_code'];
+    $rv_stmt = $conn->prepare("SELECT id, is_active FROM vouchers WHERE code = ?");
+    $rv_stmt->bind_param("s", $rv_code);
+    $rv_stmt->execute();
+    $rv = $rv_stmt->get_result()->fetch_assoc();
+    if (!$rv || !$rv['is_active']) {
+        // Voucher was deleted or deactivated — silently remove it
+        unset($_SESSION['voucher_code'], $_SESSION['voucher_discount']);
+    }
 }
 
 // Apply voucher
@@ -102,13 +115,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['apply_voucher'])) {
             $_SESSION['voucher_code'] = '';
             $_SESSION['voucher_discount'] = 0;
         } else {
-            $_SESSION['voucher_code'] = $code;
-            if ($v['discount_type'] === 'percent') {
-                $_SESSION['voucher_discount'] = round($sub * ($v['discount_value'] / 100), 2);
+            // ── One-time use check ───────────────────────────────────────────
+            // Check if this user has already successfully used this voucher in a past order
+            $uid = $_SESSION['user_id'];
+            $use_stmt = $conn->prepare(
+                "SELECT COUNT(*) as cnt FROM orders WHERE user_id = ? AND voucher_code = ? AND status != 'Cancelled'"
+            );
+            $use_stmt->bind_param("is", $uid, $code);
+            $use_stmt->execute();
+            $use_row = $use_stmt->get_result()->fetch_assoc();
+            if ($use_row['cnt'] > 0) {
+                $error = 'You have already used this voucher.';
+                $_SESSION['voucher_code'] = '';
+                $_SESSION['voucher_discount'] = 0;
             } else {
-                $_SESSION['voucher_discount'] = min($v['discount_value'], $sub);
+                $_SESSION['voucher_code'] = $code;
+                if ($v['discount_type'] === 'percent') {
+                    $_SESSION['voucher_discount'] = round($sub * ($v['discount_value'] / 100), 2);
+                } else {
+                    $_SESSION['voucher_discount'] = min($v['discount_value'], $sub);
+                }
+                $voucher_msg = 'Voucher applied! You saved ₱' . number_format($_SESSION['voucher_discount'], 2) . '.';
             }
-            $voucher_msg = 'Voucher applied! You saved ₱' . number_format($_SESSION['voucher_discount'], 2) . '.';
         }
         $voucher_code = $_SESSION['voucher_code'] ?? '';
         $discount_val = $_SESSION['voucher_discount'] ?? 0;
@@ -167,7 +195,7 @@ if (isset($_SESSION['cart'])) {
 }
 $disc_applied      = $_SESSION['voucher_discount'] ?? 0;
 $fulfillment       = $_SESSION['fulfillment_type'] ?? 'pickup';
-$delivery_addr     = $_SESSION['delivery_address'] ?? $registered_address;
+$delivery_addr     = (!empty($_SESSION['delivery_address'])) ? $_SESSION['delivery_address'] : $registered_address;
 $delivery_fee      = ($fulfillment === 'delivery') ? 50.00 : 0.00;
 $total             = $subtotal - $disc_applied + $delivery_fee;
 
@@ -185,11 +213,38 @@ require_once 'includes/header.php';
     </ul>
     <div class="sidebar-divider"></div>
     <div style="padding:0 10px;">
-      <p style="font-size:0.72rem;color:var(--muted2);line-height:1.6;">Available vouchers:<br/>
-        <span style="color:var(--gold);font-weight:600;">OVERDOSE10</span> — 10% off ₱200+<br/>
-        <span style="color:var(--gold);font-weight:600;">FIRSTCUP</span> — ₱50 off ₱150+<br/>
-        <span style="color:var(--gold);font-weight:600;">CAFFEINE20</span> — 20% off ₱500+
-      </p>
+      <?php
+        // Fetch only active vouchers to show in the sidebar
+        $uid_for_sidebar = $_SESSION['user_id'];
+        $sv_q = $conn->query("SELECT code, discount_type, discount_value, min_order FROM vouchers WHERE is_active = 1 ORDER BY id ASC");
+        $sidebar_vouchers = [];
+        if ($sv_q) while ($sv = $sv_q->fetch_assoc()) $sidebar_vouchers[] = $sv;
+      ?>
+      <?php if (!empty($sidebar_vouchers)): ?>
+        <p style="font-size:0.7rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--gold);opacity:0.75;margin-bottom:8px;">Available Vouchers</p>
+        <?php foreach ($sidebar_vouchers as $sv):
+          $sv_code = $sv['code'];
+          $used_stmt = $conn->prepare("SELECT COUNT(*) as cnt FROM orders WHERE user_id = ? AND voucher_code = ? AND status != 'Cancelled'");
+          $used_stmt->bind_param("is", $uid_for_sidebar, $sv_code);
+          $used_stmt->execute();
+          $used_row = $used_stmt->get_result()->fetch_assoc();
+          $already_used = $used_row['cnt'] > 0;
+          $sv_label = $sv['discount_type'] === 'percent'
+            ? $sv['discount_value'] . '% off'
+            : '₱' . number_format($sv['discount_value'], 0) . ' off';
+          $sv_min = $sv['min_order'] > 0 ? ' ₱' . number_format($sv['min_order'], 0) . '+' : '';
+        ?>
+          <div style="margin-bottom:7px;<?= $already_used ? 'opacity:0.4;' : '' ?>">
+            <span style="color:var(--gold);font-weight:600;font-size:0.72rem;"><?= htmlspecialchars($sv['code']) ?></span>
+            <span style="color:var(--muted2);font-size:0.72rem;"> — <?= $sv_label . $sv_min ?></span>
+            <?php if ($already_used): ?>
+              <span style="display:block;font-size:0.65rem;color:var(--muted2);font-style:italic;">✓ Already used</span>
+            <?php endif; ?>
+          </div>
+        <?php endforeach; ?>
+      <?php else: ?>
+        <p style="font-size:0.72rem;color:var(--muted2);line-height:1.6;">No vouchers available at this time.</p>
+      <?php endif; ?>
     </div>
   </aside>
 
@@ -274,34 +329,24 @@ require_once 'includes/header.php';
                 </label>
               </div>
               <?php if ($fulfillment === 'delivery'): ?>
-                <?php $is_custom = ($delivery_addr !== $registered_address); ?>
                 <div class="delivery-addr-group" id="delivery-addr-group">
                   <div class="addr-label-row">
                     <label class="addr-label">Delivery Address</label>
-                    <?php if ($is_custom && $registered_address): ?>
-                      <button type="submit" name="reset_address" class="addr-reset-link" title="Revert to your registered address">↩ Use registered address</button>
-                    <?php endif; ?>
                   </div>
-                  <?php if (!$is_custom && $registered_address): ?>
-                    <!-- Showing registered address — read-only with edit toggle -->
-                    <div class="addr-display">
-                      <span class="addr-display-text"><?= htmlspecialchars($delivery_addr) ?></span>
-                      <button type="button" class="addr-edit-btn" onclick="toggleAddrEdit(this)">✏️ Edit</button>
+                  <!-- Read-only display (shown by default) -->
+                  <div class="addr-display" id="addr-display">
+                    <span class="addr-display-text" id="addr-display-text"><?= htmlspecialchars($delivery_addr ?: 'No address set') ?></span>
+                    <button type="button" class="addr-edit-btn" onclick="toggleAddrEdit()">✏️ Edit</button>
+                  </div>
+                  <!-- Edit area (hidden by default) -->
+                  <div class="addr-edit-area" id="addr-edit-area" style="display:none;">
+                    <textarea id="addr-textarea" rows="4" class="addr-input"><?= htmlspecialchars($delivery_addr) ?></textarea>
+                    <div style="display:flex;gap:8px;margin-top:8px;">
+                      <button type="button" class="btn-gold" style="flex:1;justify-content:center;" onclick="saveAddrEdit()">SAVE</button>
+                      <button type="button" class="btn-outline" style="flex:1;justify-content:center;" onclick="cancelAddrEdit()">Cancel</button>
                     </div>
-                    <div class="addr-edit-area" style="display:none;">
-                      <textarea name="delivery_address" rows="4" class="addr-input"><?= htmlspecialchars($delivery_addr) ?></textarea>
-                      <div style="display:flex;gap:8px;margin-top:8px;">
-                        <button type="submit" name="save_fulfillment" class="btn-gold" style="flex:1;justify-content:center;">Save</button>
-                        <button type="button" class="btn-outline" style="flex:1;justify-content:center;" onclick="toggleAddrEdit(this.closest('.delivery-addr-group').querySelector('.addr-edit-btn'))">Cancel</button>
-                      </div>
-                    </div>
-                    <input type="hidden" name="delivery_address" value="<?= htmlspecialchars($delivery_addr) ?>"/>
-                  <?php else: ?>
-                    <!-- Custom address — editable -->
-                    <textarea name="delivery_address" rows="2" class="addr-input" placeholder="House No., Street, Barangay, City"><?= htmlspecialchars($delivery_addr) ?></textarea>
-                    <button type="submit" name="save_fulfillment" class="btn-gold" style="margin-top:10px;">Save Address</button>
-                    <input type="hidden" name="reset_address" value="0"/>
-                  <?php endif; ?>
+                  </div>
+                  <input type="hidden" id="addr-hidden" name="delivery_address" value="<?= htmlspecialchars($delivery_addr) ?>"/>
                 </div>
               <?php else: ?>
                 <input type="hidden" name="delivery_address" value=""/>
@@ -774,22 +819,6 @@ require_once 'includes/header.php';
     margin-bottom: 7px;
   }
 
-  .addr-reset-link {
-    background: none;
-    border: none;
-    color: var(--gold);
-    font-size: 0.72rem;
-    font-family: 'DM Sans', sans-serif;
-    font-weight: 600;
-    cursor: pointer;
-    padding: 0;
-    text-decoration: underline;
-    opacity: 0.75;
-    transition: opacity 0.2s;
-  }
-
-  .addr-reset-link:hover { opacity: 1; }
-
   .addr-display {
     display: flex;
     align-items: flex-start;
@@ -958,23 +987,32 @@ require_once 'includes/header.php';
 </style>
 
 <script>
-function toggleAddrEdit(editBtn) {
-  var group = editBtn.closest('.delivery-addr-group');
-  var display = group.querySelector('.addr-display');
-  var editArea = group.querySelector('.addr-edit-area');
-  var hiddenInput = group.querySelector('input[type="hidden"][name="delivery_address"]');
-  var isEditing = editArea.style.display !== 'none';
-  if (isEditing) {
-    editArea.style.display = 'none';
-    display.style.display = 'flex';
-    if (hiddenInput) hiddenInput.disabled = false;
-    editBtn.textContent = '✏️ Edit';
-  } else {
-    editArea.style.display = 'block';
-    display.style.display = 'none';
-    if (hiddenInput) hiddenInput.disabled = true;
-    editBtn.textContent = '✏️ Edit';
-  }
+function toggleAddrEdit() {
+  document.getElementById('addr-display').style.display = 'none';
+  document.getElementById('addr-edit-area').style.display = 'block';
+  document.getElementById('addr-hidden').disabled = true;
+}
+
+function cancelAddrEdit() {
+  document.getElementById('addr-edit-area').style.display = 'none';
+  document.getElementById('addr-display').style.display = 'flex';
+  document.getElementById('addr-hidden').disabled = false;
+  // Restore textarea to current saved value
+  document.getElementById('addr-textarea').value = document.getElementById('addr-hidden').value;
+}
+
+function saveAddrEdit() {
+  var newAddr = document.getElementById('addr-textarea').value.trim();
+  if (!newAddr) return;
+  // Update the hidden input with new address so it submits
+  document.getElementById('addr-hidden').value = newAddr;
+  document.getElementById('addr-hidden').disabled = false;
+  // Submit the fulfillment form
+  var form = document.getElementById('fulfillment-form');
+  // Ensure save_fulfillment is set
+  var saveInput = form.querySelector('input[name="save_fulfillment"]');
+  if (saveInput) saveInput.value = '1';
+  form.submit();
 }
 </script>
 

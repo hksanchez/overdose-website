@@ -242,7 +242,7 @@ if (!empty($_SESSION['cart_flash']) && isset($_GET['added'])) {
                    onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"/>
               <div class="img-fallback">☕</div>
               <?php if ($is_promo): ?>
-                <div class="badge-sale">🏷 SALE</div>
+                <div class="badge-sale">SALE</div>
               <?php endif; ?>
               <?php if ($out_of_stock): ?>
                 <div class="badge-unavailable">NOT AVAILABLE</div>
@@ -303,7 +303,7 @@ if (!empty($_SESSION['cart_flash']) && isset($_GET['added'])) {
                    onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"/>
               <div class="img-fallback">🥐</div>
               <?php if ($is_promo): ?>
-                <div class="badge-sale">🏷 SALE</div>
+                <div class="badge-sale">SALE</div>
               <?php endif; ?>
               <?php if ($out_of_stock): ?>
                 <div class="badge-unavailable">NOT AVAILABLE</div>
