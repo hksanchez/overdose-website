@@ -490,6 +490,11 @@ $status_colors = [
                       <div style="flex:1;">
                         <div class="pending-order-num">Order #<?= $rp['id'] ?></div>
                         <div class="pending-order-meta"><?= htmlspecialchars($rp['first_name'] . ' ' . $rp['last_name']) ?> · ₱<?= number_format($rp['total_amount'],2) ?> · <?= date('g:i A', strtotime($rp['created_at'])) ?></div>
+                        <?php if (!empty($rp['order_note'])): ?>
+                          <div style="margin-top:5px;font-size:0.72rem;color:var(--gold);background:rgba(212,175,90,0.07);border:1px solid rgba(212,175,90,0.18);border-radius:3px;padding:4px 8px;display:inline-block;max-width:100%;">
+                            <?= htmlspecialchars(mb_strimwidth($rp['order_note'], 0, 60, '…')) ?>
+                          </div>
+                        <?php endif; ?>
                       </div>
                       <form method="POST" style="display:inline;">
                         <input type="hidden" name="order_id" value="<?= $rp['id'] ?>"/>
@@ -726,6 +731,7 @@ $status_colors = [
                     <th>Customer</th>
                     <th>Total</th>
                     <th>Type</th>
+                    <th>Note</th>
                     <th>Status</th>
                     <th>Placed</th>
                     <th>Actions</th>
@@ -751,6 +757,15 @@ $status_colors = [
                     <td><?= htmlspecialchars($ord['first_name'] . ' ' . $ord['last_name']) ?></td>
                     <td style="font-weight:600;">₱<?= number_format($ord['total_amount'],2) ?></td>
                     <td style="color:var(--muted);font-size:0.78rem;"><?= ucfirst($ord['fulfillment_type'] ?? 'pickup') ?></td>
+                    <td style="max-width:160px;">
+                      <?php if (!empty($ord['order_note'])): ?>
+                        <span title="<?= htmlspecialchars($ord['order_note']) ?>" style="display:inline-flex;align-items:center;gap:5px;font-size:0.75rem;color:var(--gold);background:rgba(212,175,90,0.08);border:1px solid rgba(212,175,90,0.22);border-radius:3px;padding:3px 8px;cursor:default;max-width:150px;">
+                          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?= htmlspecialchars(mb_strimwidth($ord['order_note'], 0, 28, '…')) ?></span>
+                        </span>
+                      <?php else: ?>
+                        <span style="color:var(--muted);font-size:0.75rem;">—</span>
+                      <?php endif; ?>
+                    </td>
                     <td>
                       <span class="status-pill" style="color:<?= $sc ?>;border-color:<?= $sc ?>33;background:<?= $sc ?>15;"><?= $ord['status'] ?></span>
                     </td>
@@ -768,7 +783,7 @@ $status_colors = [
                   </tr>
                 <?php endwhile; ?>
                 <?php if (!$found_orders): ?>
-                  <tr><td colspan="7" style="text-align:center;color:var(--muted);padding:32px;">No orders found.</td></tr>
+                  <tr><td colspan="8" style="text-align:center;color:var(--muted);padding:32px;">No orders found.</td></tr>
                 <?php endif; ?>
                 </tbody>
               </table>
