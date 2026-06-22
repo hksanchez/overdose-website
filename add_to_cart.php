@@ -33,12 +33,11 @@ if (isset($_SESSION['cart'][$pid])) {
     }
     $price = ($pr['is_promo'] && $pr['promo_price']) ? (float)$pr['promo_price'] : (float)$pr['price'];
     $_SESSION['cart'][$pid] = [
-        'id'       => $pr['id'],
-        'name'     => $pr['name'],
-        'price'    => $price,
-        'qty'      => $qty,
-        'image'    => $pr['image'],
-        'category' => $pr['category'],
+        'id'    => $pr['id'],
+        'name'  => $pr['name'],
+        'price' => $price,
+        'qty'   => $qty,
+        'image' => $pr['image'] ?? ''
     ];
     $name = $pr['name'];
 }

@@ -7,39 +7,44 @@ $page_title = 'Cart — Overdose Cafe';
 // Fetch store settings
 $st_q = $conn->query("SELECT * FROM site_settings");
 $store_settings = [];
-if ($st_q) while($r = $st_q->fetch_assoc()) $store_settings[$r['setting_key']] = $r['setting_value'];
+if ($st_q)
+  while ($r = $st_q->fetch_assoc())
+    $store_settings[$r['setting_key']] = $r['setting_value'];
 $is_online = ($store_settings['store_status'] ?? 'online') === 'online';
 
-if (!isset($_SESSION['user_id'])) { header("Location: login.php"); exit(); }
+if (!isset($_SESSION['user_id'])) {
+  header("Location: login.php");
+  exit();
+}
 
 $msg = '';
 $error = '';
 
 // Show success message when redirected from promo popup "Order Now"
 if (!empty($_GET['added'])) {
-    $msg = 'Item added to cart successfully!';
+  $msg = 'Item added to cart successfully!';
 }
 
 // Remove item
 if (isset($_GET['remove'])) {
-    $rid = (int)$_GET['remove'];
-    unset($_SESSION['cart'][$rid]);
-    header("Location: cart.php");
-    exit();
+  $rid = (int) $_GET['remove'];
+  unset($_SESSION['cart'][$rid]);
+  header("Location: cart.php");
+  exit();
 }
 
 // Update quantities
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_cart'])) {
-    foreach ($_POST['quantities'] as $pid => $qty) {
-        $qty = (int)$qty;
-        if ($qty <= 0) {
-            unset($_SESSION['cart'][$pid]);
-        } else {
-            $_SESSION['cart'][$pid]['qty'] = $qty;
-        }
+  foreach ($_POST['quantities'] as $pid => $qty) {
+    $qty = (int) $qty;
+    if ($qty <= 0) {
+      unset($_SESSION['cart'][$pid]);
+    } else {
+      $_SESSION['cart'][$pid]['qty'] = $qty;
     }
-    header("Location: cart.php");
-    exit();
+  }
+  header("Location: cart.php");
+  exit();
 }
 
 // Fetch user's registered address from DB
@@ -50,154 +55,160 @@ $user_row = $uq->get_result()->fetch_assoc();
 $registered_address = $user_row['address'] ?? '';
 
 // Restore fulfillment from session; default delivery address to registered one
-$fulfillment   = $_SESSION['fulfillment_type'] ?? 'pickup';
+$fulfillment = $_SESSION['fulfillment_type'] ?? 'pickup';
 $delivery_addr = (!empty($_SESSION['delivery_address'])) ? $_SESSION['delivery_address'] : $registered_address;
-$order_note    = $_SESSION['order_note'] ?? '';
+$order_note = $_SESSION['order_note'] ?? '';
 
 // Save fulfillment choice
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_fulfillment'])) {
-    $fulfillment = ($_POST['fulfillment_type'] === 'delivery') ? 'delivery' : 'pickup';
-    $delivery_addr = trim($_POST['delivery_address'] ?? '');
-    if ($delivery_addr === '') {
-        $delivery_addr = $_SESSION['delivery_address'] ?? $registered_address;
-    }
-    $_SESSION['fulfillment_type']  = $fulfillment;
-    $_SESSION['delivery_address']  = $delivery_addr;
-    $_SESSION['order_note']        = trim($_POST['order_note'] ?? '');
-    $order_note = $_SESSION['order_note'];
-    header("Location: cart.php");
-    exit();
+  $fulfillment = ($_POST['fulfillment_type'] === 'delivery') ? 'delivery' : 'pickup';
+  $delivery_addr = trim($_POST['delivery_address'] ?? '');
+  if ($delivery_addr === '') {
+    $delivery_addr = $_SESSION['delivery_address'] ?? $registered_address;
+  }
+  $_SESSION['fulfillment_type'] = $fulfillment;
+  $_SESSION['delivery_address'] = $delivery_addr;
+  $_SESSION['order_note'] = trim($_POST['order_note'] ?? '');
+  $order_note = $_SESSION['order_note'];
+  header("Location: cart.php");
+  exit();
 }
 
 // ── Re-validate any currently applied voucher on every page load ─────────────
 // This ensures that if admin deactivates/deletes a voucher, it's removed from
 // the customer's cart automatically on their next page view.
 if (!empty($_SESSION['voucher_code'])) {
-    $rv_code = $_SESSION['voucher_code'];
-    $rv_stmt = $conn->prepare("SELECT id, is_active FROM vouchers WHERE code = ?");
-    $rv_stmt->bind_param("s", $rv_code);
-    $rv_stmt->execute();
-    $rv = $rv_stmt->get_result()->fetch_assoc();
-    if (!$rv || !$rv['is_active']) {
-        // Voucher was deleted or deactivated — silently remove it
-        unset($_SESSION['voucher_code'], $_SESSION['voucher_discount']);
-    }
+  $rv_code = $_SESSION['voucher_code'];
+  $rv_stmt = $conn->prepare("SELECT id, is_active FROM vouchers WHERE code = ?");
+  $rv_stmt->bind_param("s", $rv_code);
+  $rv_stmt->execute();
+  $rv = $rv_stmt->get_result()->fetch_assoc();
+  if (!$rv || !$rv['is_active']) {
+    // Voucher was deleted or deactivated — silently remove it
+    unset($_SESSION['voucher_code'], $_SESSION['voucher_discount']);
+  }
 }
 
 // Apply voucher
-$discount    = 0;
+$discount = 0;
 $voucher_msg = '';
 $voucher_code = $_SESSION['voucher_code'] ?? '';
 $discount_val = $_SESSION['voucher_discount'] ?? 0;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['apply_voucher'])) {
-    $code = strtoupper(trim($_POST['voucher_code']));
-    if ($code) {
-        $stmt = $conn->prepare("SELECT * FROM vouchers WHERE code = ? AND is_active = 1");
-        $stmt->bind_param("s", $code);
-        $stmt->execute();
-        $v = $stmt->get_result()->fetch_assoc();
+  $code = strtoupper(trim($_POST['voucher_code']));
+  if ($code) {
+    $stmt = $conn->prepare("SELECT * FROM vouchers WHERE code = ? AND is_active = 1");
+    $stmt->bind_param("s", $code);
+    $stmt->execute();
+    $v = $stmt->get_result()->fetch_assoc();
 
-        // Calculate subtotal
-        $sub = 0;
-        if (isset($_SESSION['cart'])) {
-            foreach ($_SESSION['cart'] as $item) {
-                $sub += $item['price'] * $item['qty'];
-            }
-        }
-
-        if (!$v) {
-            $error = 'Invalid or expired voucher code.';
-            $_SESSION['voucher_code'] = '';
-            $_SESSION['voucher_discount'] = 0;
-        } elseif ($sub < $v['min_order']) {
-            $error = 'Minimum order of ₱' . number_format($v['min_order'], 2) . ' required for this voucher.';
-            $_SESSION['voucher_code'] = '';
-            $_SESSION['voucher_discount'] = 0;
-        } else {
-            // ── One-time use check ───────────────────────────────────────────
-            // Check if this user has already successfully used this voucher in a past order
-            $uid = $_SESSION['user_id'];
-            $use_stmt = $conn->prepare(
-                "SELECT COUNT(*) as cnt FROM orders WHERE user_id = ? AND voucher_code = ? AND status != 'Cancelled'"
-            );
-            $use_stmt->bind_param("is", $uid, $code);
-            $use_stmt->execute();
-            $use_row = $use_stmt->get_result()->fetch_assoc();
-            if ($use_row['cnt'] > 0) {
-                $error = 'You have already used this voucher.';
-                $_SESSION['voucher_code'] = '';
-                $_SESSION['voucher_discount'] = 0;
-            } else {
-                $_SESSION['voucher_code'] = $code;
-                if ($v['discount_type'] === 'percent') {
-                    $_SESSION['voucher_discount'] = round($sub * ($v['discount_value'] / 100), 2);
-                } else {
-                    $_SESSION['voucher_discount'] = min($v['discount_value'], $sub);
-                }
-                $voucher_msg = 'Voucher applied! You saved ₱' . number_format($_SESSION['voucher_discount'], 2) . '.';
-            }
-        }
-        $voucher_code = $_SESSION['voucher_code'] ?? '';
-        $discount_val = $_SESSION['voucher_discount'] ?? 0;
+    // Calculate subtotal
+    $sub = 0;
+    if (isset($_SESSION['cart'])) {
+      foreach ($_SESSION['cart'] as $item) {
+        $sub += $item['price'] * $item['qty'];
+      }
     }
+
+    if (!$v) {
+      $error = 'Invalid or expired voucher code.';
+      $_SESSION['voucher_code'] = '';
+      $_SESSION['voucher_discount'] = 0;
+    } elseif ($sub < $v['min_order']) {
+      $error = 'Minimum order of ₱' . number_format($v['min_order'], 2) . ' required for this voucher.';
+      $_SESSION['voucher_code'] = '';
+      $_SESSION['voucher_discount'] = 0;
+    } else {
+      // ── One-time use check ───────────────────────────────────────────
+      // Check if this user has already successfully used this voucher in a past order
+      $uid = $_SESSION['user_id'];
+      $use_stmt = $conn->prepare(
+        "SELECT COUNT(*) as cnt FROM orders WHERE user_id = ? AND voucher_code = ? AND status != 'Cancelled'"
+      );
+      $use_stmt->bind_param("is", $uid, $code);
+      $use_stmt->execute();
+      $use_row = $use_stmt->get_result()->fetch_assoc();
+      if ($use_row['cnt'] > 0) {
+        $error = 'You have already used this voucher.';
+        $_SESSION['voucher_code'] = '';
+        $_SESSION['voucher_discount'] = 0;
+      } else {
+        $_SESSION['voucher_code'] = $code;
+        if ($v['discount_type'] === 'percent') {
+          $_SESSION['voucher_discount'] = round($sub * ($v['discount_value'] / 100), 2);
+        } else {
+          $_SESSION['voucher_discount'] = min($v['discount_value'], $sub);
+        }
+        $voucher_msg = 'Voucher applied! You saved ₱' . number_format($_SESSION['voucher_discount'], 2) . '.';
+      }
+    }
+    $voucher_code = $_SESSION['voucher_code'] ?? '';
+    $discount_val = $_SESSION['voucher_discount'] ?? 0;
+  }
 }
 
 // Place order
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
-    if (!$is_online) {
-        $error = 'The store is currently closed. We are not accepting orders at this time.';
-    } elseif (empty($_SESSION['cart'])) {
-        $error = 'Your cart is empty.';
+  if (!$is_online) {
+    $error = 'The store is currently closed. We are not accepting orders at this time.';
+  } elseif (empty($_SESSION['cart'])) {
+    $error = 'Your cart is empty.';
+  } else {
+    $ft = $_SESSION['fulfillment_type'] ?? 'pickup';
+    $da = $_SESSION['delivery_address'] ?? '';
+    if ($ft === 'delivery' && empty($da)) {
+      $error = 'Please enter a delivery address before placing your order.';
     } else {
-        $ft = $_SESSION['fulfillment_type'] ?? 'pickup';
-        $da = $_SESSION['delivery_address'] ?? '';
-        if ($ft === 'delivery' && empty($da)) {
-            $error = 'Please enter a delivery address before placing your order.';
-        } else {
-            $sub = 0;
-            foreach ($_SESSION['cart'] as $item) {
-                $sub += $item['price'] * $item['qty'];
-            }
-            $disc  = $_SESSION['voucher_discount'] ?? 0;
-            $dfee  = ($ft === 'delivery') ? 50.00 : 0.00;
-            $total = $sub - $disc + $dfee;
-            $vcode = $_SESSION['voucher_code'] ?? null;
-            $uid   = $_SESSION['user_id'];
-            $note  = trim($_POST['order_note'] ?? $_SESSION['order_note'] ?? '');
+      $sub = 0;
+      foreach ($_SESSION['cart'] as $item) {
+        $sub += $item['price'] * $item['qty'];
+      }
+      $disc = $_SESSION['voucher_discount'] ?? 0;
+      $dfee = ($ft === 'delivery') ? 50.00 : 0.00;
+      $total = $sub - $disc + $dfee;
+      $vcode = $_SESSION['voucher_code'] ?? null;
+      $uid = $_SESSION['user_id'];
+      $note = trim($_POST['order_note'] ?? $_SESSION['order_note'] ?? '');
 
-            $stmt = $conn->prepare("INSERT INTO orders (user_id, total_amount, discount, voucher_code, fulfillment_type, delivery_address, order_note, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'Pending')");
-            $stmt->bind_param("iddssss", $uid, $total, $disc, $vcode, $ft, $da, $note);
-            $stmt->execute();
-            $order_id = $conn->insert_id;
+      $stmt = $conn->prepare("INSERT INTO orders (user_id, total_amount, discount, voucher_code, fulfillment_type, delivery_address, order_note, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'Pending')");
+      $stmt->bind_param("iddssss", $uid, $total, $disc, $vcode, $ft, $da, $note);
+      $stmt->execute();
+      $order_id = $conn->insert_id;
 
-            $istmt = $conn->prepare("INSERT INTO order_items (order_id, product_id, quantity, price) VALUES (?, ?, ?, ?)");
-            foreach ($_SESSION['cart'] as $item) {
-                $istmt->bind_param("iiid", $order_id, $item['id'], $item['qty'], $item['price']);
-                $istmt->execute();
-            }
+      $istmt = $conn->prepare("INSERT INTO order_items (order_id, product_id, quantity, price) VALUES (?, ?, ?, ?)");
+      foreach ($_SESSION['cart'] as $item) {
+        $istmt->bind_param("iiid", $order_id, $item['id'], $item['qty'], $item['price']);
+        $istmt->execute();
+      }
 
-            // Clear cart, voucher, fulfillment, and note
-            unset($_SESSION['cart'], $_SESSION['voucher_code'], $_SESSION['voucher_discount'],
-                  $_SESSION['fulfillment_type'], $_SESSION['delivery_address'], $_SESSION['order_note']);
-            header("Location: orders.php?placed=" . $order_id);
-            exit();
-        }
+      // Clear cart, voucher, fulfillment, and note
+      unset(
+        $_SESSION['cart'],
+        $_SESSION['voucher_code'],
+        $_SESSION['voucher_discount'],
+        $_SESSION['fulfillment_type'],
+        $_SESSION['delivery_address'],
+        $_SESSION['order_note']
+      );
+      header("Location: orders.php?placed=" . $order_id);
+      exit();
     }
+  }
 }
 
 // Calculate totals
 $subtotal = 0;
 if (isset($_SESSION['cart'])) {
-    foreach ($_SESSION['cart'] as $item) {
-        $subtotal += $item['price'] * $item['qty'];
-    }
+  foreach ($_SESSION['cart'] as $item) {
+    $subtotal += $item['price'] * $item['qty'];
+  }
 }
-$disc_applied      = $_SESSION['voucher_discount'] ?? 0;
-$fulfillment       = $_SESSION['fulfillment_type'] ?? 'pickup';
-$delivery_addr     = (!empty($_SESSION['delivery_address'])) ? $_SESSION['delivery_address'] : $registered_address;
-$delivery_fee      = ($fulfillment === 'delivery') ? 50.00 : 0.00;
-$total             = $subtotal - $disc_applied + $delivery_fee;
+$disc_applied = $_SESSION['voucher_discount'] ?? 0;
+$fulfillment = $_SESSION['fulfillment_type'] ?? 'pickup';
+$delivery_addr = (!empty($_SESSION['delivery_address'])) ? $_SESSION['delivery_address'] : $registered_address;
+$delivery_fee = ($fulfillment === 'delivery') ? 50.00 : 0.00;
+$total = $subtotal - $disc_applied + $delivery_fee;
 
 require_once 'includes/header.php';
 ?>
@@ -214,14 +225,18 @@ require_once 'includes/header.php';
     <div class="sidebar-divider"></div>
     <div style="padding:0 10px;">
       <?php
-        // Fetch only active vouchers to show in the sidebar
-        $uid_for_sidebar = $_SESSION['user_id'];
-        $sv_q = $conn->query("SELECT code, discount_type, discount_value, min_order FROM vouchers WHERE is_active = 1 ORDER BY id ASC");
-        $sidebar_vouchers = [];
-        if ($sv_q) while ($sv = $sv_q->fetch_assoc()) $sidebar_vouchers[] = $sv;
+      // Fetch only active vouchers to show in the sidebar
+      $uid_for_sidebar = $_SESSION['user_id'];
+      $sv_q = $conn->query("SELECT code, discount_type, discount_value, min_order FROM vouchers WHERE is_active = 1 ORDER BY id ASC");
+      $sidebar_vouchers = [];
+      if ($sv_q)
+        while ($sv = $sv_q->fetch_assoc())
+          $sidebar_vouchers[] = $sv;
       ?>
       <?php if (!empty($sidebar_vouchers)): ?>
-        <p style="font-size:0.7rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--gold);opacity:0.75;margin-bottom:8px;">Available Vouchers</p>
+        <p
+          style="font-size:0.7rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--gold);opacity:0.75;margin-bottom:8px;">
+          Available Vouchers</p>
         <?php foreach ($sidebar_vouchers as $sv):
           $sv_code = $sv['code'];
           $used_stmt = $conn->prepare("SELECT COUNT(*) as cnt FROM orders WHERE user_id = ? AND voucher_code = ? AND status != 'Cancelled'");
@@ -233,7 +248,7 @@ require_once 'includes/header.php';
             ? $sv['discount_value'] . '% off'
             : '₱' . number_format($sv['discount_value'], 0) . ' off';
           $sv_min = $sv['min_order'] > 0 ? ' ₱' . number_format($sv['min_order'], 0) . '+' : '';
-        ?>
+          ?>
           <div style="margin-bottom:7px;<?= $already_used ? 'opacity:0.4;' : '' ?>">
             <span style="color:var(--gold);font-weight:600;font-size:0.72rem;"><?= htmlspecialchars($sv['code']) ?></span>
             <span style="color:var(--muted2);font-size:0.72rem;"> — <?= $sv_label . $sv_min ?></span>
@@ -283,12 +298,20 @@ require_once 'includes/header.php';
             </div>
             <?php foreach ($_SESSION['cart'] as $pid => $item): ?>
               <div class="cart-table-row">
+                <span class="item-img-cell">
+                  <?php if (!empty($item['image'])): ?>
+                    <img src="<?= htmlspecialchars($item['image']) ?>" alt="<?= htmlspecialchars($item['name']) ?>"
+                      class="cart-item-img" />
+                  <?php else: ?>
+                    <div class="cart-item-img cart-item-img-placeholder">☕</div>
+                  <?php endif; ?>
+                </span>
                 <span class="item-name"><?= htmlspecialchars($item['name']) ?></span>
                 <span>₱<?= number_format($item['price'], 2) ?></span>
                 <span class="qty-controls">
                   <?php if ($item['qty'] > 1): ?>
                     <form method="POST" style="display:inline;">
-                      <input type="hidden" name="quantities[<?= $pid ?>]" value="<?= $item['qty'] - 1 ?>"/>
+                      <input type="hidden" name="quantities[<?= $pid ?>]" value="<?= $item['qty'] - 1 ?>" />
                       <button type="submit" name="update_cart" class="qty-btn">−</button>
                     </form>
                   <?php else: ?>
@@ -296,7 +319,7 @@ require_once 'includes/header.php';
                   <?php endif; ?>
                   <span class="qty-num"><?= $item['qty'] ?></span>
                   <form method="POST" style="display:inline;">
-                    <input type="hidden" name="quantities[<?= $pid ?>]" value="<?= $item['qty'] + 1 ?>"/>
+                    <input type="hidden" name="quantities[<?= $pid ?>]" value="<?= $item['qty'] + 1 ?>" />
                     <button type="submit" name="update_cart" class="qty-btn" <?= $item['qty'] >= 20 ? 'disabled' : '' ?>>+</button>
                   </form>
                 </span>
@@ -312,7 +335,7 @@ require_once 'includes/header.php';
             <form method="POST" id="fulfillment-form" style="margin-top:16px;">
               <div class="fulfillment-options">
                 <label class="fulfillment-option <?= $fulfillment === 'pickup' ? 'selected' : '' ?>">
-                  <input type="radio" name="fulfillment_type" value="pickup" <?= $fulfillment === 'pickup' ? 'checked' : '' ?> onchange="this.form.submit()"/>
+                  <input type="radio" name="fulfillment_type" value="pickup" <?= $fulfillment === 'pickup' ? 'checked' : '' ?> onchange="this.form.submit()" />
                   <div class="fulfillment-icon">🏪</div>
                   <div>
                     <div class="fulfillment-label">Pick Up</div>
@@ -320,7 +343,7 @@ require_once 'includes/header.php';
                   </div>
                 </label>
                 <label class="fulfillment-option <?= $fulfillment === 'delivery' ? 'selected' : '' ?>">
-                  <input type="radio" name="fulfillment_type" value="delivery" <?= $fulfillment === 'delivery' ? 'checked' : '' ?> onchange="this.form.submit()"/>
+                  <input type="radio" name="fulfillment_type" value="delivery" <?= $fulfillment === 'delivery' ? 'checked' : '' ?> onchange="this.form.submit()" />
                   <div class="fulfillment-icon">🛵</div>
                   <div>
                     <div class="fulfillment-label">Delivery</div>
@@ -335,37 +358,51 @@ require_once 'includes/header.php';
                   </div>
                   <!-- Read-only display (shown by default) -->
                   <div class="addr-display" id="addr-display">
-                    <span class="addr-display-text" id="addr-display-text"><?= htmlspecialchars($delivery_addr ?: 'No address set') ?></span>
+                    <span class="addr-display-text"
+                      id="addr-display-text"><?= htmlspecialchars($delivery_addr ?: 'No address set') ?></span>
                     <button type="button" class="addr-edit-btn" onclick="toggleAddrEdit()">✏️ Edit</button>
                   </div>
                   <!-- Edit area (hidden by default) -->
                   <div class="addr-edit-area" id="addr-edit-area" style="display:none;">
-                    <textarea id="addr-textarea" rows="4" class="addr-input"><?= htmlspecialchars($delivery_addr) ?></textarea>
+                    <textarea id="addr-textarea" rows="4"
+                      class="addr-input"><?= htmlspecialchars($delivery_addr) ?></textarea>
                     <div style="display:flex;gap:8px;margin-top:8px;">
-                      <button type="button" class="btn-gold" style="flex:1;justify-content:center;" onclick="saveAddrEdit()">SAVE</button>
-                      <button type="button" class="btn-outline" style="flex:1;justify-content:center;" onclick="cancelAddrEdit()">Cancel</button>
+                      <button type="button" class="btn-gold" style="flex:1;justify-content:center;"
+                        onclick="saveAddrEdit()">SAVE</button>
+                      <button type="button" class="btn-outline" style="flex:1;justify-content:center;"
+                        onclick="cancelAddrEdit()">Cancel</button>
                     </div>
                   </div>
-                  <input type="hidden" id="addr-hidden" name="delivery_address" value="<?= htmlspecialchars($delivery_addr) ?>"/>
+                  <input type="hidden" id="addr-hidden" name="delivery_address"
+                    value="<?= htmlspecialchars($delivery_addr) ?>" />
                 </div>
               <?php else: ?>
-                <input type="hidden" name="delivery_address" value=""/>
+                <input type="hidden" name="delivery_address" value="" />
               <?php endif; ?>
-              <input type="hidden" name="save_fulfillment" value="1"/>
+              <input type="hidden" name="save_fulfillment" value="1" />
             </form>
 
             <!-- Order Note (shown for both pickup and delivery, below address) -->
-            <div style="margin-top:16px; padding-top:16px; border-top:1px solid var(--border-light, rgba(255,255,255,0.07));">
-              <label style="display:block; font-size:0.7rem; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; color:var(--gold); opacity:0.8; margin-bottom:8px;">Order Note <span style="font-weight:400; opacity:0.55; text-transform:none; letter-spacing:0;">(optional)</span></label>
+            <div
+              style="margin-top:16px; padding-top:16px; border-top:1px solid var(--border-light, rgba(255,255,255,0.07));">
+              <label
+                style="display:block; font-size:0.7rem; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; color:var(--gold); opacity:0.8; margin-bottom:8px;">Order
+                Note <span
+                  style="font-weight:400; opacity:0.55; text-transform:none; letter-spacing:0;">(optional)</span></label>
               <form method="POST">
-                <textarea name="order_note" rows="3" placeholder="e.g. Less ice, extra syrup, no sugar..." style="width:100%; background:var(--bg); border:1px solid var(--border); border-radius:3px; padding:10px 12px; color:var(--cream); font-family:'DM Sans',sans-serif; font-size:0.84rem; line-height:1.55; resize:vertical; outline:none; transition:border-color 0.2s;" onfocus="this.style.borderColor='rgba(212,175,90,0.5)'" onblur="this.style.borderColor='var(--border)'"><?= htmlspecialchars($order_note) ?></textarea>
-                <input type="hidden" name="save_fulfillment" value="1"/>
-                <input type="hidden" name="fulfillment_type" value="<?= htmlspecialchars($fulfillment) ?>"/>
-                <input type="hidden" name="delivery_address" value="<?= htmlspecialchars($delivery_addr) ?>"/>
-                <button type="submit" class="btn-gold" style="margin-top:9px; font-size:0.72rem; padding:8px 18px;">Save Note</button>
+                <textarea name="order_note" rows="3" placeholder="e.g. Less ice, extra syrup, no sugar..."
+                  style="width:100%; background:var(--bg); border:1px solid var(--border); border-radius:3px; padding:10px 12px; color:var(--cream); font-family:'DM Sans',sans-serif; font-size:0.84rem; line-height:1.55; resize:vertical; outline:none; transition:border-color 0.2s;"
+                  onfocus="this.style.borderColor='rgba(212,175,90,0.5)'"
+                  onblur="this.style.borderColor='var(--border)'"><?= htmlspecialchars($order_note) ?></textarea>
+                <input type="hidden" name="save_fulfillment" value="1" />
+                <input type="hidden" name="fulfillment_type" value="<?= htmlspecialchars($fulfillment) ?>" />
+                <input type="hidden" name="delivery_address" value="<?= htmlspecialchars($delivery_addr) ?>" />
+                <button type="submit" class="btn-gold" style="margin-top:9px; font-size:0.72rem; padding:8px 18px;">Save
+                  Note</button>
               </form>
               <?php if ($order_note): ?>
-                <p style="margin-top:8px; font-size:0.76rem; color:var(--muted); font-style:italic;">📝 Note saved: "<?= htmlspecialchars($order_note) ?>"</p>
+                <p style="margin-top:8px; font-size:0.76rem; color:var(--muted); font-style:italic;">📝 Note saved:
+                  "<?= htmlspecialchars($order_note) ?>"</p>
               <?php endif; ?>
             </div>
 
@@ -377,67 +414,70 @@ require_once 'includes/header.php';
           <!-- Payment Instructions -->
           <div class="payment-guide-box" id="payment-guide-box">
             <?php if ($fulfillment === 'pickup'): ?>
-            <div class="payment-guide pickup-guide">
-              <div class="payment-guide-header">
-                <span class="payment-guide-icon">💳</span>
-                <div>
-                  <div class="payment-guide-title">Payment Methods — Pick Up</div>
-                  <div class="payment-guide-subtitle">Pay when you collect your order at the store</div>
+              <div class="payment-guide pickup-guide">
+                <div class="payment-guide-header">
+                  <span class="payment-guide-icon">💳</span>
+                  <div>
+                    <div class="payment-guide-title">Payment Methods — Pick Up</div>
+                    <div class="payment-guide-subtitle">Pay when you collect your order at the store</div>
+                  </div>
+                </div>
+                <div class="payment-methods-grid">
+                  <div class="payment-method-card">
+                    <div class="pm-label">Cash</div>
+                    <div class="pm-desc">Pay at the counter upon pick-up. Any denomination accepted.</div>
+                  </div>
+                  <div class="payment-method-card">
+                    <div class="pm-label">GCash QR</div>
+                    <div class="pm-desc">Scan our QR code at the counter. Show your payment confirmation to the cashier.
+                    </div>
+                  </div>
+                </div>
+                <div class="payment-guide-steps">
+                  <div class="step-label">📋 Pick-Up Steps</div>
+                  <ol class="step-list">
+                    <li>Place your order and monitor your order status in <strong>My Orders</strong>.</li>
+                    <li> Head over to <strong>Overdose Cafe</strong> once the status shows <strong>"Ready"</strong>.</li>
+                    <li>Show your order number to the cashier.</li>
+                    <li>Pay via <strong>Cash</strong> or scan the <strong>GCash QR</strong> code at the counter.</li>
+                    <li>Enjoy your order!</li>
+                  </ol>
                 </div>
               </div>
-              <div class="payment-methods-grid">
-                <div class="payment-method-card">
-                  <div class="pm-label">Cash</div>
-                  <div class="pm-desc">Pay at the counter upon pick-up. Any denomination accepted.</div>
-                </div>
-                <div class="payment-method-card">
-                  <div class="pm-label">GCash QR</div>
-                  <div class="pm-desc">Scan our QR code at the counter. Show your payment confirmation to the cashier.</div>
-                </div>
-              </div>
-              <div class="payment-guide-steps">
-                <div class="step-label">📋 Pick-Up Steps</div>
-                <ol class="step-list">
-                  <li>Place your order and monitor your order status in <strong>My Orders</strong>.</li>
-                  <li> Head over to <strong>Overdose Cafe</strong> once the status shows <strong>"Ready"</strong>.</li>
-                  <li>Show your order number to the cashier.</li>
-                  <li>Pay via <strong>Cash</strong> or scan the <strong>GCash QR</strong> code at the counter.</li>
-                  <li>Enjoy your order!</li>
-                </ol>
-              </div>
-            </div>
             <?php else: ?>
-            <div class="payment-guide delivery-guide">
-              <div class="payment-guide-header">
-                <span class="payment-guide-icon">🛵</span>
-                <div>
-                  <div class="payment-guide-title">Payment Method — Delivery</div>
-                  <div class="payment-guide-subtitle">Pay upon receiving your order at your door</div>
+              <div class="payment-guide delivery-guide">
+                <div class="payment-guide-header">
+                  <span class="payment-guide-icon">🛵</span>
+                  <div>
+                    <div class="payment-guide-title">Payment Method — Delivery</div>
+                    <div class="payment-guide-subtitle">Pay upon receiving your order at your door</div>
+                  </div>
                 </div>
-              </div>
-              <div class="payment-methods-grid single">
-                <div class="payment-method-card">
-                  <div class="pm-label">Cash Only</div>
-                  <div class="pm-desc">Delivery orders only accept cash payment upon receipt.</div>
+                <div class="payment-methods-grid single">
+                  <div class="payment-method-card">
+                    <div class="pm-label">Cash Only</div>
+                    <div class="pm-desc">Delivery orders only accept cash payment upon receipt.</div>
+                  </div>
                 </div>
-              </div>
-              <div class="payment-guide-alert">
+                <div class="payment-guide-alert">
 
-                <div>
-                  <strong>Please bring the exact amount.</strong> Our riders may not carry change. Prepare the exact total shown above to ensure a smooth handover.
+                  <div>
+                    <strong>Please bring the exact amount.</strong> Our riders may not carry change. Prepare the exact total
+                    shown above to ensure a smooth handover.
+                  </div>
+                </div>
+                <div class="payment-guide-steps">
+                  <div class="step-label">📋 Delivery Steps</div>
+                  <ol class="step-list">
+                    <li>Place your order and monitor your order status in <strong>My Orders</strong>.</li>
+                    <li>Prepare the <strong>exact cash amount</strong> equal to your total.</li>
+                    <li>Our rider will arrive at your address — delivery usually takes <strong>10–30 mins</strong> depending
+                      on your location.</li>
+                    <li>Hand over the exact cash to the rider upon receipt.</li>
+                    <li>Enjoy your order!</li>
+                  </ol>
                 </div>
               </div>
-              <div class="payment-guide-steps">
-                <div class="step-label">📋 Delivery Steps</div>
-                <ol class="step-list">
-                  <li>Place your order and monitor your order status in <strong>My Orders</strong>.</li>
-                  <li>Prepare the <strong>exact cash amount</strong> equal to your total.</li>
-                  <li>Our rider will arrive at your address — delivery usually takes <strong>10–30 mins</strong> depending on your location.</li>
-                  <li>Hand over the exact cash to the rider upon receipt.</li>
-                  <li>Enjoy your order!</li>
-                </ol>
-              </div>
-            </div>
             <?php endif; ?>
           </div>
 
@@ -445,7 +485,8 @@ require_once 'includes/header.php';
           <div class="voucher-box">
             <h4>Apply Voucher</h4>
             <form method="POST" style="display:flex;gap:10px;margin-top:12px;">
-              <input type="text" name="voucher_code" placeholder="Enter code e.g. OVERDOSE10" value="<?= htmlspecialchars($voucher_code) ?>" class="voucher-input"/>
+              <input type="text" name="voucher_code" placeholder="Enter code e.g. OVERDOSE10"
+                value="<?= htmlspecialchars($voucher_code) ?>" class="voucher-input" />
               <button type="submit" name="apply_voucher" class="btn-gold" style="white-space:nowrap;">Apply</button>
             </form>
           </div>
@@ -478,8 +519,11 @@ require_once 'includes/header.php';
             </span>
           </div>
           <?php if ($fulfillment === 'delivery' && $delivery_addr): ?>
-            <div class="summary-row" style="font-size:0.75rem;color:var(--muted2);gap:8px;flex-direction:column;align-items:flex-start;">
-              <span style="color:var(--muted);font-size:0.72rem;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;">Deliver to</span>
+            <div class="summary-row"
+              style="font-size:0.75rem;color:var(--muted2);gap:8px;flex-direction:column;align-items:flex-start;">
+              <span
+                style="color:var(--muted);font-size:0.72rem;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;">Deliver
+                to</span>
               <span><?= htmlspecialchars($delivery_addr) ?></span>
             </div>
           <?php endif; ?>
@@ -490,16 +534,19 @@ require_once 'includes/header.php';
           </div>
           <form method="POST" style="margin-top:20px;">
             <?php if (!$is_online): ?>
-              <button type="button" disabled style="width:100%;justify-content:center;padding:14px;background:#333;color:#888;border:1px solid #444;border-radius:3px;font-family:'DM Sans',sans-serif;font-weight:700;font-size:0.75rem;letter-spacing:2px;text-transform:uppercase;cursor:not-allowed;">
+              <button type="button" disabled
+                style="width:100%;justify-content:center;padding:14px;background:#333;color:#888;border:1px solid #444;border-radius:3px;font-family:'DM Sans',sans-serif;font-weight:700;font-size:0.75rem;letter-spacing:2px;text-transform:uppercase;cursor:not-allowed;">
                 Store Closed
               </button>
             <?php else: ?>
-              <button type="submit" name="place_order" class="btn-gold" style="width:100%;justify-content:center;padding:14px;">
+              <button type="submit" name="place_order" class="btn-gold"
+                style="width:100%;justify-content:center;padding:14px;">
                 Place Order
               </button>
             <?php endif; ?>
           </form>
-          <a href="products.php" class="btn-outline" style="width:100%;justify-content:center;padding:13px;margin-top:10px;">
+          <a href="products.php" class="btn-outline"
+            style="width:100%;justify-content:center;padding:13px;margin-top:10px;">
             Continue Shopping
           </a>
         </div>
@@ -522,12 +569,14 @@ require_once 'includes/header.php';
     align-items: start;
   }
 
-  .cart-table { width: 100%; }
+  .cart-table {
+    width: 100%;
+  }
 
   .cart-table-head,
   .cart-table-row {
     display: grid;
-    grid-template-columns: 2fr 1fr 110px 1fr 36px;
+    grid-template-columns: 80px 2fr 1fr 110px 1fr 36px;
     gap: 12px;
     align-items: center;
     padding: 12px 0;
@@ -549,8 +598,41 @@ require_once 'includes/header.php';
     color: var(--cream);
   }
 
-  .item-name { font-weight: 500; }
-  .item-sub { font-weight: 700; color: var(--gold); }
+  .item-name {
+    font-weight: 500;
+  }
+
+  .item-sub {
+    font-weight: 700;
+    color: var(--gold);
+  }
+
+  .item-img-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cart-item-img {
+  width: 80px;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  display: block;
+}
+
+.cart-item-img-placeholder {
+  width: 80px;
+  height: 80px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.6rem;
+}
 
   .qty-controls {
     display: flex;
@@ -578,7 +660,7 @@ require_once 'includes/header.php';
 
   .qty-btn:hover:not(:disabled) {
     border-color: var(--gold);
-    background: rgba(212,175,90,0.1);
+    background: rgba(212, 175, 90, 0.1);
     color: var(--gold);
   }
 
@@ -587,8 +669,15 @@ require_once 'includes/header.php';
     cursor: not-allowed;
   }
 
-  .qty-btn-remove { color: rgba(224,85,85,0.6); }
-  .qty-btn-remove:hover { border-color: var(--error); color: var(--error); background: rgba(224,85,85,0.08); }
+  .qty-btn-remove {
+    color: rgba(224, 85, 85, 0.6);
+  }
+
+  .qty-btn-remove:hover {
+    border-color: var(--error);
+    color: var(--error);
+    background: rgba(224, 85, 85, 0.08);
+  }
 
   .qty-num {
     min-width: 20px;
@@ -599,13 +688,15 @@ require_once 'includes/header.php';
   }
 
   .remove-btn {
-    color: rgba(224,85,85,0.5);
+    color: rgba(224, 85, 85, 0.5);
     text-decoration: none;
     font-size: 0.85rem;
     transition: color 0.2s;
   }
 
-  .remove-btn:hover { color: var(--error); }
+  .remove-btn:hover {
+    color: var(--error);
+  }
 
   .voucher-box {
     margin-top: 24px;
@@ -635,7 +726,9 @@ require_once 'includes/header.php';
     text-transform: uppercase;
   }
 
-  .voucher-input:focus { border-color: var(--gold); }
+  .voucher-input:focus {
+    border-color: var(--gold);
+  }
 
   .order-summary {
     background: var(--card);
@@ -660,7 +753,9 @@ require_once 'includes/header.php';
     margin-bottom: 10px;
   }
 
-  .summary-row.discount { color: var(--success); }
+  .summary-row.discount {
+    color: var(--success);
+  }
 
   .summary-row.total {
     font-size: 1rem;
@@ -681,7 +776,11 @@ require_once 'includes/header.php';
     color: var(--muted);
   }
 
-  .empty-icon { font-size: 3rem; margin-bottom: 16px; opacity: 0.4; }
+  .empty-icon {
+    font-size: 3rem;
+    margin-bottom: 16px;
+    opacity: 0.4;
+  }
 
   /* ── FULFILLMENT ── */
   .fulfillment-box {
@@ -719,19 +818,24 @@ require_once 'includes/header.php';
     user-select: none;
   }
 
-  .fulfillment-option input[type="radio"] { display: none; }
+  .fulfillment-option input[type="radio"] {
+    display: none;
+  }
 
   .fulfillment-option:hover {
-    border-color: rgba(212,175,90,0.4);
-    background: rgba(212,175,90,0.04);
+    border-color: rgba(212, 175, 90, 0.4);
+    background: rgba(212, 175, 90, 0.04);
   }
 
   .fulfillment-option.selected {
     border-color: var(--gold);
-    background: rgba(212,175,90,0.08);
+    background: rgba(212, 175, 90, 0.08);
   }
 
-  .fulfillment-icon { font-size: 1.4rem; line-height: 1; }
+  .fulfillment-icon {
+    font-size: 1.4rem;
+    line-height: 1;
+  }
 
   .fulfillment-label {
     font-size: 0.85rem;
@@ -745,7 +849,9 @@ require_once 'includes/header.php';
     color: var(--muted);
   }
 
-  .fulfillment-option.selected .fulfillment-label { color: var(--gold); }
+  .fulfillment-option.selected .fulfillment-label {
+    color: var(--gold);
+  }
 
   .delivery-addr-group {
     margin-top: 14px;
@@ -778,8 +884,13 @@ require_once 'includes/header.php';
     transition: border-color 0.2s;
   }
 
-  .addr-input:focus { border-color: var(--gold); }
-  .addr-input::placeholder { color: rgba(245,237,216,0.2); }
+  .addr-input:focus {
+    border-color: var(--gold);
+  }
+
+  .addr-input::placeholder {
+    color: rgba(245, 237, 216, 0.2);
+  }
 
   .pickup-note {
     margin-top: 12px;
@@ -802,14 +913,14 @@ require_once 'includes/header.php';
 
   .badge-pickup {
     color: var(--gold);
-    border-color: rgba(212,175,90,0.3);
-    background: rgba(212,175,90,0.08);
+    border-color: rgba(212, 175, 90, 0.3);
+    background: rgba(212, 175, 90, 0.08);
   }
 
   .badge-delivery {
     color: #5B9BD4;
-    border-color: rgba(91,155,212,0.3);
-    background: rgba(91,155,212,0.08);
+    border-color: rgba(91, 155, 212, 0.3);
+    background: rgba(91, 155, 212, 0.08);
   }
 
   .addr-label-row {
@@ -851,9 +962,15 @@ require_once 'includes/header.php';
     transition: opacity 0.2s;
   }
 
-  .addr-edit-btn:hover { opacity: 1; }
+  .addr-edit-btn:hover {
+    opacity: 1;
+  }
 
-  @media (max-width: 900px) { .cart-layout { grid-template-columns: 1fr; } }
+  @media (max-width: 900px) {
+    .cart-layout {
+      grid-template-columns: 1fr;
+    }
+  }
 
   /* ── PAYMENT GUIDE ── */
   .payment-guide-box {
@@ -869,12 +986,24 @@ require_once 'includes/header.php';
   }
 
   @keyframes fadeInGuide {
-    from { opacity: 0; transform: translateY(6px); }
-    to   { opacity: 1; transform: translateY(0); }
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 
-  .pickup-guide  { border-left: 3px solid var(--gold); }
-  .delivery-guide { border-left: 3px solid #5B9BD4; }
+  .pickup-guide {
+    border-left: 3px solid var(--gold);
+  }
+
+  .delivery-guide {
+    border-left: 3px solid #5B9BD4;
+  }
 
   .payment-guide-header {
     display: flex;
@@ -883,7 +1012,10 @@ require_once 'includes/header.php';
     margin-bottom: 16px;
   }
 
-  .payment-guide-icon { font-size: 1.6rem; line-height: 1; }
+  .payment-guide-icon {
+    font-size: 1.6rem;
+    line-height: 1;
+  }
 
   .payment-guide-title {
     font-family: 'Playfair Display', serif;
@@ -919,16 +1051,20 @@ require_once 'includes/header.php';
   }
 
   .pickup-guide .payment-method-card:hover {
-    border-color: rgba(212,175,90,0.4);
-    background: rgba(212,175,90,0.04);
+    border-color: rgba(212, 175, 90, 0.4);
+    background: rgba(212, 175, 90, 0.04);
   }
 
   .delivery-guide .payment-method-card:hover {
-    border-color: rgba(91,155,212,0.4);
-    background: rgba(91,155,212,0.04);
+    border-color: rgba(91, 155, 212, 0.4);
+    background: rgba(91, 155, 212, 0.04);
   }
 
-  .pm-icon { font-size: 1.3rem; margin-bottom: 6px; line-height: 1; }
+  .pm-icon {
+    font-size: 1.3rem;
+    margin-bottom: 6px;
+    line-height: 1;
+  }
 
   .pm-label {
     font-size: 0.82rem;
@@ -947,8 +1083,8 @@ require_once 'includes/header.php';
     display: flex;
     align-items: flex-start;
     gap: 10px;
-    background: rgba(212,155,50,0.08);
-    border: 1px solid rgba(212,155,50,0.25);
+    background: rgba(212, 155, 50, 0.08);
+    border: 1px solid rgba(212, 155, 50, 0.25);
     border-radius: 3px;
     padding: 12px 14px;
     font-size: 0.78rem;
@@ -957,7 +1093,11 @@ require_once 'includes/header.php';
     margin-bottom: 16px;
   }
 
-  .alert-icon { font-size: 1rem; margin-top: 1px; flex-shrink: 0; }
+  .alert-icon {
+    font-size: 1rem;
+    margin-top: 1px;
+    flex-shrink: 0;
+  }
 
   .payment-guide-steps {
     border-top: 1px solid var(--border);
@@ -982,39 +1122,46 @@ require_once 'includes/header.php';
     line-height: 1.7;
   }
 
-  .step-list li { margin-bottom: 3px; }
-  .step-list strong { color: var(--cream); font-weight: 600; }
+  .step-list li {
+    margin-bottom: 3px;
+  }
+
+  .step-list strong {
+    color: var(--cream);
+    font-weight: 600;
+  }
 </style>
 
 <script>
-function toggleAddrEdit() {
-  document.getElementById('addr-display').style.display = 'none';
-  document.getElementById('addr-edit-area').style.display = 'block';
-  document.getElementById('addr-hidden').disabled = true;
-}
+  function toggleAddrEdit() {
+    document.getElementById('addr-display').style.display = 'none';
+    document.getElementById('addr-edit-area').style.display = 'block';
+    document.getElementById('addr-hidden').disabled = true;
+  }
 
-function cancelAddrEdit() {
-  document.getElementById('addr-edit-area').style.display = 'none';
-  document.getElementById('addr-display').style.display = 'flex';
-  document.getElementById('addr-hidden').disabled = false;
-  // Restore textarea to current saved value
-  document.getElementById('addr-textarea').value = document.getElementById('addr-hidden').value;
-}
+  function cancelAddrEdit() {
+    document.getElementById('addr-edit-area').style.display = 'none';
+    document.getElementById('addr-display').style.display = 'flex';
+    document.getElementById('addr-hidden').disabled = false;
+    // Restore textarea to current saved value
+    document.getElementById('addr-textarea').value = document.getElementById('addr-hidden').value;
+  }
 
-function saveAddrEdit() {
-  var newAddr = document.getElementById('addr-textarea').value.trim();
-  if (!newAddr) return;
-  // Update the hidden input with new address so it submits
-  document.getElementById('addr-hidden').value = newAddr;
-  document.getElementById('addr-hidden').disabled = false;
-  // Submit the fulfillment form
-  var form = document.getElementById('fulfillment-form');
-  // Ensure save_fulfillment is set
-  var saveInput = form.querySelector('input[name="save_fulfillment"]');
-  if (saveInput) saveInput.value = '1';
-  form.submit();
-}
+  function saveAddrEdit() {
+    var newAddr = document.getElementById('addr-textarea').value.trim();
+    if (!newAddr) return;
+    // Update the hidden input with new address so it submits
+    document.getElementById('addr-hidden').value = newAddr;
+    document.getElementById('addr-hidden').disabled = false;
+    // Submit the fulfillment form
+    var form = document.getElementById('fulfillment-form');
+    // Ensure save_fulfillment is set
+    var saveInput = form.querySelector('input[name="save_fulfillment"]');
+    if (saveInput) saveInput.value = '1';
+    form.submit();
+  }
 </script>
 
 </body>
+
 </html>
