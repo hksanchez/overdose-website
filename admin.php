@@ -122,7 +122,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $cat    = trim($_POST['pcat']);
         $price  = (float)$_POST['pprice'];
         $desc   = trim($_POST['pdesc']);
-        $img    = trim($_POST['pimg']);
+        $img    = trim($_POST['pimg'] ?? '');
+        $upload_error = null;
+        if (isset($_FILES['pimg_file']) && $_FILES['pimg_file']['error'] != UPLOAD_ERR_NO_FILE) {
+            if ($_FILES['pimg_file']['error'] == UPLOAD_ERR_OK) {
+                $upload_dir = 'assets/products/';
+                if (!is_dir($upload_dir)) mkdir($upload_dir, 0777, true);
+                $filename = time() . '_' . preg_replace('/[^a-zA-Z0-9.\-_]/', '', basename($_FILES['pimg_file']['name']));
+                $target = $upload_dir . $filename;
+                if (move_uploaded_file($_FILES['pimg_file']['tmp_name'], $target)) {
+                    $img = $target;
+                } else {
+                    $upload_error = 'Failed to move uploaded file.';
+                }
+            } else {
+                $upload_error = 'Upload error code: ' . $_FILES['pimg_file']['error'];
+            }
+        }
         $promo  = isset($_POST['pis_promo']) ? 1 : 0;
         $pprice = $promo ? (float)$_POST['ppromo_price'] : null;
         $ins = $conn->prepare("INSERT INTO products (name,category,price,description,image,promo_price,is_promo) VALUES (?,?,?,?,?,?,?)");
@@ -135,7 +151,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $insi->bind_param("siii", $name, $iqty, $ithresh, $new_pid);
             $insi->execute();
         }
-        $action_msg = 'success:Product added.';
+        if ($upload_error) {
+            $action_msg = 'error:' . $upload_error;
+        } else {
+            $action_msg = 'success:Product added.';
+        }
     }
 
     if (isset($_POST['edit_product'])) {
@@ -144,7 +164,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $cat    = trim($_POST['pcat']);
         $price  = (float)$_POST['pprice'];
         $desc   = trim($_POST['pdesc']);
-        $img    = trim($_POST['pimg']);
+        $img    = trim($_POST['pimg'] ?? '');
+        $upload_error = null;
+        if (isset($_FILES['pimg_file']) && $_FILES['pimg_file']['error'] != UPLOAD_ERR_NO_FILE) {
+            if ($_FILES['pimg_file']['error'] == UPLOAD_ERR_OK) {
+                $upload_dir = 'assets/products/';
+                if (!is_dir($upload_dir)) mkdir($upload_dir, 0777, true);
+                $filename = time() . '_' . preg_replace('/[^a-zA-Z0-9.\-_]/', '', basename($_FILES['pimg_file']['name']));
+                $target = $upload_dir . $filename;
+                if (move_uploaded_file($_FILES['pimg_file']['tmp_name'], $target)) {
+                    $img = $target;
+                } else {
+                    $upload_error = 'Failed to move uploaded file.';
+                }
+            } else {
+                $upload_error = 'Upload error code: ' . $_FILES['pimg_file']['error'];
+            }
+        }
         // If pis_promo checkbox present (from Promos section), use it; otherwise preserve via hidden field
         if (isset($_POST['pis_promo'])) {
             $promo = 1;
@@ -159,7 +195,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $upd->execute();
         $ename = $conn->real_escape_string($name);
         $conn->query("UPDATE inventory SET item_name='$ename' WHERE linked_product_id=$pid");
-        $action_msg = 'success:Product updated.';
+        if ($upload_error) {
+            $action_msg = 'error:' . $upload_error;
+        } else {
+            $action_msg = 'success:Product updated.';
+        }
     }
 
     if (isset($_POST['delete_product'])) {
@@ -1067,7 +1107,7 @@ $status_colors = [
               <div class="modal-title">Add Product</div>
               <button class="modal-close" onclick="closeModal('add-prod-modal')">✕</button>
             </div>
-            <form method="POST">
+            <form method="POST" enctype="multipart/form-data">
             <div class="modal-body">
               <div class="form-row">
                 <div class="form-group"><label>Name</label><input type="text" name="pname" required/></div>
@@ -1081,7 +1121,11 @@ $status_colors = [
               </div>
               <div class="form-group"><label>Regular Price (₱)</label><input type="number" step="0.01" name="pprice" required/></div>
               <div class="form-group"><label>Description</label><textarea name="pdesc" rows="2"></textarea></div>
-              <div class="form-group"><label>Image Path</label><input type="text" name="pimg" placeholder="assets/products/filename.jpg"/></div>
+              <div class="form-group">
+                <label>Upload Image</label>
+                <input type="file" name="pimg_file" accept="image/*"/>
+                <input type="hidden" name="pimg" value="assets/products/default.jpg"/>
+              </div>
             </div>
             <div class="modal-footer">
               <button type="button" class="btn btn-ghost btn-sm" onclick="closeModal('add-prod-modal')">Cancel</button>
@@ -1098,7 +1142,7 @@ $status_colors = [
               <div class="modal-title">Edit Product</div>
               <button class="modal-close" onclick="closeModal('edit-prod-modal')">✕</button>
             </div>
-            <form method="POST">
+            <form method="POST" enctype="multipart/form-data">
             <input type="hidden" name="pid" id="edit-pid"/>
             <div class="modal-body">
               <div class="form-row">
@@ -1112,7 +1156,11 @@ $status_colors = [
                 </div>
               </div>
               <div class="form-group"><label>Description</label><textarea name="pdesc" id="edit-pdesc" rows="2"></textarea></div>
-              <div class="form-group"><label>Image Path</label><input type="text" name="pimg" id="edit-pimg"/></div>
+              <div class="form-group">
+                <label>Update Image</label>
+                <input type="file" name="pimg_file" accept="image/*"/>
+                <input type="hidden" name="pimg" id="edit-pimg"/>
+              </div>
               <!-- hidden fields so edit_product handler still receives required values -->
               <input type="hidden" name="pprice" id="edit-pprice"/>
               <input type="hidden" name="ppromo_price" id="edit-ppromo_price"/>
