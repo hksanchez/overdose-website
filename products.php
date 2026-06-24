@@ -31,8 +31,200 @@ if (!empty($promo_items) && isset($_SESSION['user_id']) && empty($_SESSION['prom
     $_SESSION['promo_popup_shown'] = true;
 }
 
+// Fetch active vouchers
+$vouchers_sql = "SELECT * FROM vouchers WHERE is_active = 1";
+if (isset($_SESSION['user_id'])) {
+    $uid = intval($_SESSION['user_id']);
+    $vouchers_sql .= " AND code NOT IN (SELECT voucher_code FROM orders WHERE user_id = $uid AND voucher_code IS NOT NULL AND voucher_code != '')";
+}
+$vouchers_sql .= " ORDER BY min_order ASC LIMIT 3";
+$vouchers_q = $conn->query($vouchers_sql);
+$active_vouchers = [];
+if ($vouchers_q) while ($v = $vouchers_q->fetch_assoc()) $active_vouchers[] = $v;
+
 require_once 'includes/header.php';
 ?>
+
+<!-- TOP PROMO BANNER -->
+<div id="top-promo-banner" class="top-promo-banner">
+  <div class="banner-bg">
+    <!-- Paste your background image URL here -->
+  </div>
+  <div class="banner-content">
+    <div class="banner-tagline">
+      One Cup Too Many is <em>Perfect.</em><?php if (!empty($active_vouchers)): ?> Grab yours with these exclusive deals.<?php endif; ?>
+    </div>
+    <?php if (!empty($active_vouchers)): ?>
+    <div class="banner-vouchers-container">
+      <span class="banner-title">Available Vouchers:</span>
+      <?php foreach ($active_vouchers as $v): ?>
+        <span class="banner-voucher">
+          <strong><?= htmlspecialchars($v['code']) ?></strong> - 
+          <?php if ($v['discount_type'] === 'percent'): ?>
+            <?= floatval($v['discount_value']) ?>% OFF
+          <?php else: ?>
+            ₱<?= floatval($v['discount_value']) ?> OFF
+          <?php endif; ?>
+        </span>
+      <?php endforeach; ?>
+    </div>
+    <?php endif; ?>
+  </div>
+  <button id="close-promo-banner" class="banner-close">&times;</button>
+</div>
+
+<style>
+.top-promo-banner {
+  position: relative;
+  width: 100%;
+  padding: 32px 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #F5EDD8;
+  font-family: 'DM Sans', sans-serif;
+  overflow: hidden;
+  transition: opacity 0.4s ease, height 0.4s ease, padding 0.4s ease;
+  z-index: 101;
+}
+
+.top-promo-banner.hidden {
+  opacity: 0;
+  pointer-events: none;
+  height: 0 !important;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.banner-bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: #1a1208;
+  background-image: url('assets/products/bg.jpg');
+  background-size: cover;
+  background-position: center;
+  z-index: 0;
+}
+
+.banner-bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.banner-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.banner-tagline {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.9rem;
+  font-weight: 700;
+  color: var(--cream);
+  text-align: center;
+  margin-bottom: 2px;
+  white-space: nowrap;
+}
+
+.banner-tagline em {
+  color: var(--gold);
+  font-style: italic;
+}
+
+.banner-vouchers-container {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  font-size: 1.0rem;
+}
+
+.banner-title {
+  font-weight: 700;
+  color: var(--gold);
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  font-size: 1.0rem;
+}
+
+.banner-voucher {
+  background: rgba(212, 175, 90, 0.15);
+  border: 1px solid rgba(212, 175, 90, 0.3);
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-weight: 500;
+}
+
+.banner-voucher strong {
+  color: var(--gold-light);
+  letter-spacing: 1px;
+}
+
+.banner-close {
+  position: absolute;
+  right: 30px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: rgba(245, 237, 216, 0.6);
+  font-size: 2.2rem;
+  cursor: pointer;
+  z-index: 1;
+  transition: color 0.2s;
+}
+
+.banner-close:hover {
+  color: var(--cream);
+}
+</style>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  const banner = document.getElementById('top-promo-banner');
+  if (banner) {
+    document.body.insertBefore(banner, document.body.firstChild);
+    
+    banner.style.height = banner.scrollHeight + "px";
+    
+    const closeBtn = document.getElementById('close-promo-banner');
+    if(closeBtn) {
+      closeBtn.addEventListener('click', function() {
+        banner.style.height = banner.scrollHeight + "px"; 
+        requestAnimationFrame(() => {
+          banner.classList.add('hidden');
+        });
+      });
+    }
+
+    const pastriesSection = document.getElementById('pastries');
+    window.addEventListener('scroll', function() {
+      if (pastriesSection && !banner.classList.contains('hidden')) {
+        const rect = pastriesSection.getBoundingClientRect();
+        // Hide when pastries section scrolls near the top of the viewport (e.g. 150px)
+        if (rect.top <= 150) {
+          banner.style.height = banner.scrollHeight + "px"; 
+          requestAnimationFrame(() => {
+            banner.classList.add('hidden');
+          });
+        }
+      }
+    });
+  }
+});
+</script>
 
 <?php
 // Consume the cart flash for the toast
@@ -183,7 +375,7 @@ if (!empty($_SESSION['cart_flash']) && isset($_GET['added'])) {
 <?php if (!$is_online): ?>
   <div style="background:rgba(224,85,85,0.08); border-bottom:1px solid rgba(224,85,85,0.2); padding:16px 48px; text-align:center;">
     <div style="color:var(--error); font-weight:700; font-size:0.9rem; margin-bottom:4px;">We are currently closed.</div>
-    <div style="color:var(--muted); font-size:0.8rem;">Message: <?= htmlspecialchars($store_hours) ?></div>
+    <div style="color:var(--muted); font-size:0.8rem;"><?= htmlspecialchars($store_hours) ?></div>
   </div>
 <?php endif; ?>
 
@@ -903,6 +1095,93 @@ if (!empty($_SESSION['cart_flash']) && isset($_GET['added'])) {
     });
   });
 })();
+</script>
+<!-- BACK TO TOP BUTTON -->
+<button id="back-to-top" class="back-to-top" title="Back to Top">
+  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
+    <path fill-rule="evenodd" d="M8 15a.5.5 0 0 0 .5-.5V2.707l3.146 3.147a.5.5 0 0 0 .708-.708l-4-4a.5.5 0 0 0-.708 0l-4 4a.5.5 0 1 0 .708.708L7.5 2.707V14.5a.5.5 0 0 0 .5.5z"/>
+  </svg>
+</button>
+
+<style>
+.back-to-top {
+  position: fixed;
+  bottom: 30px;
+  right: 30px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--gold);
+  color: var(--bg);
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  z-index: 1000;
+  transition: transform 0.2s, background 0.2s, opacity 0.3s;
+  opacity: 0;
+  pointer-events: none;
+}
+.back-to-top.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+.back-to-top:hover {
+  background: var(--gold-light);
+  transform: translateY(-3px);
+}
+</style>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  const backToTop = document.getElementById('back-to-top');
+  const sections = document.querySelectorAll('.catalog-section-block');
+  const navLinks = document.querySelectorAll('.sidebar-nav a[href*="#"]');
+  
+  // Back to top click
+  let clickedToTop = false;
+  if (backToTop) {
+    backToTop.addEventListener('click', function() {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      backToTop.classList.remove('visible');
+      clickedToTop = true;
+      // Allow it to show again after user manually scrolls later
+      setTimeout(() => { clickedToTop = false; }, 1000); 
+    });
+  }
+
+  // Scroll spy logic
+  window.addEventListener('scroll', function() {
+    if (backToTop && !clickedToTop) {
+      if (window.scrollY > 300) {
+        backToTop.classList.add('visible');
+      } else {
+        backToTop.classList.remove('visible');
+      }
+    }
+
+    let current = '';
+    
+    sections.forEach(section => {
+      const sectionTop = section.offsetTop;
+      // Adjust offset to trigger slightly before reaching the top
+      if (window.scrollY >= sectionTop - 140) {
+        current = section.getAttribute('id');
+      }
+    });
+
+    if (current) {
+      navLinks.forEach(link => {
+        link.classList.remove('active');
+        if (link.getAttribute('href').includes('#' + current)) {
+          link.classList.add('active');
+        }
+      });
+    }
+  });
+});
 </script>
 
 </body>
