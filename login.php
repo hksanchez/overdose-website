@@ -167,6 +167,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       justify-content: center;
     }
 
+    .back-link {
+      display: inline-block;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: rgba(212,175,90,0.6);
+      text-decoration: none;
+      margin-bottom: 24px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      transition: color 0.2s, transform 0.2s;
+    }
+
+    .back-link:hover {
+      color: var(--gold);
+      transform: translateX(-2px);
+    }
+
     .form-header {
       margin-bottom: 36px;
     }
@@ -315,6 +332,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   </div>
 
   <div class="auth-form">
+    <a href="products.php" class="back-link">← Back to Catalog</a>
+    
     <div class="form-header">
       <h2>Welcome back</h2>
       <p>Sign in to your account to order.</p>
