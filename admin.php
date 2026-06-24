@@ -646,11 +646,6 @@ $status_colors = [
             <a href="admin.php?s=orders" class="btn btn-ghost btn-sm">← Back to Orders</a>
           </div>
           <div class="section-title">Order #<?= $order_detail['id'] ?></div>
-          <div class="section-sub">
-            <?= htmlspecialchars($order_detail['first_name'] . ' ' . $order_detail['last_name']) ?> ·
-            <?= htmlspecialchars($order_detail['phone'] ?? '') ?> ·
-            Placed <?= date('M d, Y g:i A', strtotime($order_detail['created_at'])) ?>
-          </div>
 
           <div class="grid-2" style="align-items:start;">
             <div>
@@ -679,13 +674,27 @@ $status_colors = [
                 <div class="card-header" style="margin:-24px -24px 18px;padding:14px 24px;border-radius:4px 4px 0 0;">Order Details</div>
                 <div style="display:flex;flex-direction:column;gap:12px;font-size:0.83rem;">
                   <div style="display:flex;justify-content:space-between;">
+                    <span style="color:var(--muted);">Customer</span>
+                    <span style="font-weight:600;"><?= htmlspecialchars($order_detail['first_name'] . ' ' . $order_detail['last_name']) ?></span>
+                  </div>
+                  <?php if (!empty($order_detail['phone'])): ?>
+                  <div style="display:flex;justify-content:space-between;">
+                    <span style="color:var(--muted);">Phone</span>
+                    <span><?= htmlspecialchars($order_detail['phone']) ?></span>
+                  </div>
+                  <?php endif; ?>
+                  <div style="display:flex;justify-content:space-between;">
+                    <span style="color:var(--muted);">Placed</span>
+                    <span><?= date('M d, Y g:i A', strtotime($order_detail['created_at'])) ?></span>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;">
+                    <span style="color:var(--muted);">Order Type</span>
+                    <span><?= ucfirst($order_detail['fulfillment_type'] ?? 'pickup') ?></span>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;">
                     <span style="color:var(--muted);">Status</span>
                     <?php $sc = $status_colors[$order_detail['status']] ?? '#888'; ?>
                     <span class="status-pill" style="color:<?= $sc ?>;border-color:<?= $sc ?>33;background:<?= $sc ?>15;"><?= $order_detail['status'] ?></span>
-                  </div>
-                  <div style="display:flex;justify-content:space-between;">
-                    <span style="color:var(--muted);">Fulfillment</span>
-                    <span><?= ucfirst($order_detail['fulfillment_type'] ?? 'pickup') ?></span>
                   </div>
                   <?php if ($order_detail['delivery_address']): ?>
                   <div style="display:flex;justify-content:space-between;gap:20px;">
@@ -707,31 +716,7 @@ $status_colors = [
                   <?php endif; ?>
                 </div>
 
-                <div style="margin-top:20px;border-top:1px solid var(--border);padding-top:18px;">
-                  <div style="font-size:0.68rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--gold);opacity:0.7;margin-bottom:12px;">Update Status</div>
-                  <form method="POST" style="display:flex;gap:10px;align-items:center;">
-                    <input type="hidden" name="order_id" value="<?= $order_detail['id'] ?>"/>
-                    <select name="new_status" style="flex:1;background:var(--panel);border:1px solid var(--border);border-radius:2px;padding:9px 12px;color:var(--cream);font-family:'DM Sans',sans-serif;font-size:0.83rem;outline:none;">
-                      <?php 
-                        $st_list = ['Pending','Preparing','Ready','Completed','Cancelled'];
-                        if (($order_detail['fulfillment_type'] ?? 'pickup') === 'delivery') {
-                            array_splice($st_list, 3, 0, 'Out for Delivery');
-                        }
-                        foreach ($st_list as $st): 
-                      ?>
-                        <option value="<?= $st ?>" <?= $order_detail['status']===$st?'selected':'' ?>><?= $st ?></option>
-                      <?php endforeach; ?>
-                    </select>
-                    <button type="submit" name="update_order_status" class="btn btn-gold btn-sm">Update</button>
-                  </form>
 
-                  <?php if ($order_detail['status'] === 'Pending'): ?>
-                    <form method="POST" style="margin-top:10px;">
-                      <input type="hidden" name="order_id" value="<?= $order_detail['id'] ?>"/>
-                      <button type="submit" name="accept_order" class="btn btn-success btn-sm" style="width:100%;justify-content:center;">✓ Accept & Start Preparing</button>
-                    </form>
-                  <?php endif; ?>
-                </div>
               </div>
             </div>
           </div>
