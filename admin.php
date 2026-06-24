@@ -450,7 +450,6 @@ $status_colors = [
           </div>
           <div class="stat-card">
             <div class="stat-label">Top Selling Item</div>
-            <div class="stat-icon">☕</div>
             <div class="stat-value" style="font-size:1.1rem;line-height:1.3;"><?= htmlspecialchars($top_item) ?></div>
             <div class="stat-sub">Most ordered product</div>
           </div>
