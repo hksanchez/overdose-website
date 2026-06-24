@@ -363,6 +363,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <input type="password" name="confirm_password" placeholder="Repeat your password" required/>
       </div>
 
+      <div class="form-group checkbox-group" style="margin-bottom: 24px;">
+        <label style="display:flex; align-items:center; gap: 10px; font-weight:normal; font-size:0.85rem; color: rgba(245,237,216,0.8); cursor: pointer;">
+          <input type="checkbox" name="terms" required style="width:18px; height:18px; cursor:pointer;" />
+          <span style="line-height: 1.4;">I agree to the <a href="javascript:void(0)" onclick="document.getElementById('terms-popup-overlay').style.display='flex'">Terms and Conditions & Data Privacy Policy</a></span>
+        </label>
+      </div>
+
       <button type="submit" class="btn-submit">Create Account</button>
     </form>
 
@@ -371,6 +378,102 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </div>
   </div>
 </div>
+
+<!-- TERMS POPUP -->
+<div id="terms-popup-overlay" style="
+  position: fixed; inset: 0; z-index: 999;
+  background: rgba(0,0,0,0.75);
+  backdrop-filter: blur(6px);
+  display: none; align-items: center; justify-content: center;
+  padding: 20px;
+  animation: termsFadeIn 0.4s ease-out;
+">
+  <div id="terms-popup-box" style="
+    background: #181309;
+    border: 1px solid rgba(212,175,90,0.3);
+    border-radius: 8px;
+    width: 100%;
+    max-width: 640px;
+    max-height: 90vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 32px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(212,175,90,0.08);
+    animation: termsSlideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  ">
+    <!-- Header -->
+    <div style="
+      padding: 22px 28px 18px;
+      border-bottom: 1px solid rgba(212,175,90,0.12);
+      display: flex; align-items: flex-start; justify-content: space-between;
+      background: linear-gradient(135deg, rgba(212,175,90,0.06) 0%, transparent 60%);
+    ">
+      <div>
+        <div style="font-size:0.6rem;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:var(--gold);opacity:0.8;margin-bottom:6px;">Legal</div>
+        <div style="font-family:'Playfair Display',serif;font-size:1.4rem;font-weight:700;color:#F5EDD8;line-height:1.2;">Terms and Conditions & Data Privacy</div>
+      </div>
+      <button onclick="document.getElementById('terms-popup-overlay').style.display='none'" style="
+        background: rgba(245,237,216,0.05);
+        border: 1px solid rgba(245,237,216,0.1);
+        border-radius: 50%;
+        width: 32px; height: 32px;
+        color: rgba(245,237,216,0.5);
+        font-size: 1rem;
+        cursor: pointer;
+        display: flex; align-items: center; justify-content: center;
+        transition: all 0.2s;
+        flex-shrink: 0;
+        margin-left: 16px;
+        margin-top: 2px;
+      " onmouseover="this.style.background='rgba(245,237,216,0.1)';this.style.color='#F5EDD8'" onmouseout="this.style.background='rgba(245,237,216,0.05)';this.style.color='rgba(245,237,216,0.5)'">✕</button>
+    </div>
+
+    <!-- Content -->
+    <div style="padding: 24px 28px; overflow-y: auto; flex: 1; color: rgba(245,237,216,0.8); font-size: 0.9rem; line-height: 1.6;">
+      <h3 style="color:var(--gold); margin-bottom: 10px;">1. Introduction</h3>
+      <p style="margin-bottom: 15px;">Welcome to Overdose Cafe. By creating an account, you agree to comply with our terms and policies. These terms govern your use of our ordering platform and services.</p>
+      
+      <h3 style="color:var(--gold); margin-bottom: 10px;">2. Data Privacy & Collection</h3>
+      <p style="margin-bottom: 15px;">We collect personal information such as your name, phone number, and delivery address exclusively for the purpose of fulfilling your orders. We do not sell or share your data with third parties. Your password is securely encrypted.</p>
+
+      <h3 style="color:var(--gold); margin-bottom: 10px;">3. Ordering & Fulfillment</h3>
+      <p style="margin-bottom: 15px;">All orders are subject to availability. Prices may change without prior notice. For delivery orders, please ensure your delivery address is accurate.</p>
+
+      <h3 style="color:var(--gold); margin-bottom: 10px;">4. Account Responsibilities</h3>
+      <p style="margin-bottom: 15px;">You are responsible for maintaining the confidentiality of your account credentials. Any activity under your account is your sole responsibility.</p>
+    </div>
+
+    <!-- Footer -->
+    <div style="
+      padding: 16px 28px;
+      border-top: 1px solid rgba(212,175,90,0.1);
+      display: flex; align-items: center; justify-content: flex-end;
+      background: rgba(212,175,90,0.02);
+    ">
+      <button onclick="document.getElementById('terms-popup-overlay').style.display='none'" style="
+        background:transparent;border:1px solid rgba(212,175,90,0.25);
+        color:rgba(212,175,90,0.7);font-family:'DM Sans',sans-serif;
+        font-size:0.75rem;font-weight:600;letter-spacing:1px;text-transform:uppercase;
+        padding:8px 18px;border-radius:2px;cursor:pointer;
+        transition:all 0.2s;
+      " onmouseover="this.style.background='rgba(212,175,90,0.08)';this.style.color='#D4AF5A'" onmouseout="this.style.background='transparent';this.style.color='rgba(212,175,90,0.7)'">Close</button>
+    </div>
+  </div>
+</div>
+
+<style>
+  @keyframes termsFadeIn  { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes termsSlideUp { from { opacity: 0; transform: translateY(30px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
+  
+  .checkbox-group a {
+    color: var(--gold);
+    text-decoration: underline;
+    transition: color 0.2s;
+  }
+  .checkbox-group a:hover {
+    color: var(--gold-light);
+  }
+</style>
 
 </body>
 </html>
