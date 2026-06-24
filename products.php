@@ -45,10 +45,21 @@ if ($vouchers_q) while ($v = $vouchers_q->fetch_assoc()) $active_vouchers[] = $v
 require_once 'includes/header.php';
 ?>
 
+<?php
+$slides = glob('assets/products/slide_*.{jpg,jpeg,png,webp,JPG,JPEG,PNG,WEBP}', GLOB_BRACE);
+if (empty($slides)) {
+    // Fallback to the default background if no slide_*.jpg files exist
+    $slides = ['assets/products/bg.jpg'];
+}
+?>
+
 <!-- TOP PROMO BANNER -->
 <div id="top-promo-banner" class="top-promo-banner">
   <div class="banner-bg">
-    <!-- Paste your background image URL here -->
+    <?php foreach($slides as $index => $slide): ?>
+      <div class="slide-layer <?= $index === 0 ? 'active' : '' ?>" style="background-image: url('<?= htmlspecialchars($slide) ?>');"></div>
+    <?php endforeach; ?>
+    <div class="banner-overlay"></div>
   </div>
   <div class="banner-content">
     <div class="banner-tagline">
@@ -102,18 +113,27 @@ require_once 'includes/header.php';
   left: 0;
   width: 100%;
   height: 100%;
-  background-color: #1a1208;
-  background-image: url('assets/products/bg.jpg');
-  background-size: cover;
-  background-position: center;
   z-index: 0;
 }
 
-.banner-bg::after {
-  content: '';
+.slide-layer {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  opacity: 0;
+  transition: opacity 1.5s ease-in-out;
+}
+
+.slide-layer.active {
+  opacity: 1;
+}
+
+.banner-overlay {
   position: absolute;
   inset: 0;
   background: rgba(0, 0, 0, 0.6);
+  z-index: 1;
 }
 
 .banner-content {
@@ -222,6 +242,16 @@ document.addEventListener("DOMContentLoaded", function() {
         }
       }
     });
+    // ── Slideshow Logic ────────────────────────────────────────────────────────
+    const slideLayers = document.querySelectorAll('.slide-layer');
+    if (slideLayers.length > 1) {
+      let currentSlide = 0;
+      setInterval(() => {
+        slideLayers[currentSlide].classList.remove('active');
+        currentSlide = (currentSlide + 1) % slideLayers.length;
+        slideLayers[currentSlide].classList.add('active');
+      }, 3000);
+    }
   }
 });
 </script>
