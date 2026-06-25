@@ -8,6 +8,11 @@ $page_title = 'Menu — Overdose Cafe';
 $active_cat = isset($_GET['cat']) && $_GET['cat'] === 'pastries' ? 'pastries' : 'coffee';
 
 
+// Check if any coffee supplies (cups, lids, straws) are out of stock
+$supplies_q = $conn->query("SELECT MIN(quantity) AS min_supply FROM inventory WHERE category = 'supplies' AND item_name IN ('Cups', 'Lids', 'Straws')");
+$supplies_row = $supplies_q ? $supplies_q->fetch_assoc() : null;
+$coffee_supplies_out = ($supplies_row === null || $supplies_row['min_supply'] === null || (int)$supplies_row['min_supply'] <= 0);
+
 // Fetch products grouped by category, joined with inventory stock
 $coffee   = $conn->query("SELECT p.*, COALESCE(i.quantity, 1) AS stock FROM products p LEFT JOIN inventory i ON i.linked_product_id = p.id WHERE p.category = 'coffee' ORDER BY p.id");
 $pastries = $conn->query("SELECT p.*, COALESCE(i.quantity, 1) AS stock FROM products p LEFT JOIN inventory i ON i.linked_product_id = p.id WHERE p.category = 'pastries' ORDER BY p.id");
@@ -444,7 +449,7 @@ if (!empty($_SESSION['cart_flash']) && isset($_GET['added'])) {
         <?php while ($p = $coffee->fetch_assoc()):
           $is_promo    = $p['is_promo'] && $p['promo_price'];
           $display_price = $is_promo ? $p['promo_price'] : $p['price'];
-          $out_of_stock  = (int)$p['stock'] <= 0;
+          $out_of_stock  = $coffee_supplies_out || (int)$p['stock'] <= 0;
         ?>
           <div class="product-card<?= $out_of_stock ? ' out-of-stock' : '' ?>">
             <div class="product-card-img-wrap">
