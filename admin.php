@@ -89,10 +89,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $qty    = (int)$_POST['item_qty'];
         $unit   = trim($_POST['item_unit']);
         $thresh = (int)$_POST['item_thresh'];
-        $ins = $conn->prepare("INSERT INTO inventory (item_name, category, quantity, unit, low_stock_threshold) VALUES (?,?,?,?,?)");
-        $ins->bind_param("ssisi", $name, $cat, $qty, $unit, $thresh);
-        $ins->execute();
-        $action_msg = 'success:Item added to inventory.';
+        // Duplicate name check (case-insensitive, across all categories)
+        $dup_chk = $conn->prepare("SELECT id FROM inventory WHERE LOWER(item_name) = LOWER(?)");
+        $dup_chk->bind_param("s", $name);
+        $dup_chk->execute();
+        $dup_chk->store_result();
+        if ($dup_chk->num_rows > 0) {
+            $action_msg = 'error:An inventory item named "' . htmlspecialchars($name) . '" already exists. Please use a different name.';
+        } else {
+            $ins = $conn->prepare("INSERT INTO inventory (item_name, category, quantity, unit, low_stock_threshold) VALUES (?,?,?,?,?)");
+            $ins->bind_param("ssisi", $name, $cat, $qty, $unit, $thresh);
+            $ins->execute();
+            $action_msg = 'success:Item added to inventory.';
+        }
+        $dup_chk->close();
     }
 
     if (isset($_POST['delete_inventory'])) {

@@ -43,8 +43,8 @@ $conn->query("
     )
 ");
 
-$chkS = $conn->query("SELECT COUNT(*) as c FROM site_settings");
-if ($chkS->fetch_assoc()['c'] == 0) {
+$chkSS = $conn->query("SELECT COUNT(*) as c FROM site_settings");
+if ($chkSS->fetch_assoc()['c'] == 0) {
     $conn->query("INSERT INTO site_settings (setting_key, setting_value) VALUES 
         ('store_status', 'online'),
         ('store_hours', 'Mon-Sun: 8:00 AM - 9:00 PM')
@@ -176,7 +176,7 @@ $conn->query("
 $chkA = $conn->query("SELECT COUNT(*) as c FROM admin_users");
 if ($chkA->fetch_assoc()['c'] == 0) {
     $pw = password_hash('admin123', PASSWORD_DEFAULT);
-    $s = $conn->prepare("INSERT INTO admin_users (username, password, full_name) VALUES (?,?,?)");
+    $s = $conn->prepare("INSERT INTO admin_users (username, password, full_name, is_active) VALUES (?,?,?,1)");
     $u = 'admin';
     $n = 'Admin';
     $s->bind_param("sss", $u, $pw, $n);
@@ -187,7 +187,7 @@ if ($chkA->fetch_assoc()['c'] == 0) {
 $chkS = $conn->query("SELECT COUNT(*) as c FROM staff_users");
 if ($chkS->fetch_assoc()['c'] == 0) {
     $pw = password_hash('staff123', PASSWORD_DEFAULT);
-    $s = $conn->prepare("INSERT INTO staff_users (username, password, full_name) VALUES (?,?,?)");
+    $s = $conn->prepare("INSERT INTO staff_users (username, password, full_name, is_active) VALUES (?,?,?,1)");
     $u = 'staff';
     $n = 'Staff Member';
     $s->bind_param("sss", $u, $pw, $n);
@@ -198,7 +198,7 @@ if ($chkS->fetch_assoc()['c'] == 0) {
 $chkR = $conn->query("SELECT COUNT(*) as c FROM rider_users");
 if ($chkR->fetch_assoc()['c'] == 0) {
     $pw = password_hash('rider123', PASSWORD_DEFAULT);
-    $s = $conn->prepare("INSERT INTO rider_users (username, password, full_name) VALUES (?,?,?)");
+    $s = $conn->prepare("INSERT INTO rider_users (username, password, full_name, is_active) VALUES (?,?,?,1)");
     $u = 'rider';
     $n = 'Rider';
     $s->bind_param("sss", $u, $pw, $n);
