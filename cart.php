@@ -557,8 +557,13 @@ require_once 'includes/header.php';
 </div>
 
 <footer class="oc-footer">
-  <div>© <?= date('Y') ?> Overdose Cafe · Manila, PH</div>
-  <span>Intentional spaces. Exceptional coffee.</span>
+  <div class="oc-footer-contact">
+    <span>📞 1778-2342</span>
+    <a href="tel:+639171234567">📱 +63 917 123 4567</a>
+    <span>📍 Overdose Cafe - 32nd Street, 7th Avenue, Manila, 1630</span>
+  </div>
+  <span class="oc-footer-tagline">Intentional spaces. Exceptional coffee.</span>
+  <div class="oc-footer-copy">© <?= date('Y') ?> Overdose Cafe</div>
 </footer>
 
 <style>

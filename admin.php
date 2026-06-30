@@ -214,11 +214,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (isset($_POST['delete_product'])) {
         $pid = (int)$_POST['pid'];
-        $conn->query("DELETE FROM inventory WHERE linked_product_id=$pid");
-        $del = $conn->prepare("DELETE FROM products WHERE id=?");
-        $del->bind_param("i", $pid);
-        $del->execute();
-        $action_msg = 'success:Product deleted.';
+        try {
+            $conn->query("DELETE FROM inventory WHERE linked_product_id=$pid");
+            $del = $conn->prepare("DELETE FROM products WHERE id=?");
+            $del->bind_param("i", $pid);
+            $del->execute();
+            $action_msg = 'success:Product deleted.';
+        } catch (mysqli_sql_exception $e) {
+            if ($e->getCode() == 1451) {
+                // MySQL Error 1451: Cannot delete or update a parent row (foreign key constraint fails)
+                $action_msg = 'error:Cannot delete this product because it has already been ordered by customers. Consider removing it from stock instead.';
+            } else {
+                $action_msg = 'error:Database error: ' . $e->getMessage();
+            }
+        }
     }
 
     if (isset($_POST['toggle_promo'])) {

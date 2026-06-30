@@ -356,15 +356,39 @@ if (isset($_SESSION['cart'])) {
     .oc-footer {
       border-top: 1px solid var(--border);
       padding: 20px 40px;
-      display: flex;
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
       align-items: center;
-      justify-content: space-between;
       font-size: 0.75rem;
       color: var(--muted2);
       background: var(--surface);
     }
 
-    .oc-footer span { color: rgba(212,175,90,0.35); }
+    .oc-footer-contact {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      text-align: left;
+    }
+
+    .oc-footer-contact a {
+      color: var(--muted2);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
+    .oc-footer-contact a:hover { color: var(--gold); }
+
+    .oc-footer-tagline {
+      color: rgba(212,175,90,0.6);
+      font-style: italic;
+      letter-spacing: 0.03em;
+      text-align: center;
+    }
+
+    .oc-footer-copy {
+      text-align: right;
+    }
   </style>
 </head>
 <body>
